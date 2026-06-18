@@ -4,7 +4,7 @@ import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
   title: 'Aula STEAM — Gestión de Impresión 3D',
-  description: 'Gestión de solicitudes, proyectos e inventario de impresión y diseño 3D — Aula STEAM Sonny Jiménez, UNAL Medellín',
+  description: 'Gestión de solicitudes, camas de impresión e inventario de impresión y diseño 3D — Aula STEAM Sonny Jiménez, UNAL Medellín',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

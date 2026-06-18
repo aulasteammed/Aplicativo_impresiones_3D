@@ -53,14 +53,17 @@ export async function cambiarEstadoProyecto(codigo: string, estado: EstadoProyec
 }
 
 /**
- * Finaliza un proyecto de impresión:
+ * Finaliza una cama de impresión:
  * 1. Actualiza Resultado / Desperdicio / Comentarios / Estado=Finalizada en
- *    TODAS las filas del proyecto en el Sheets de Historial.
- * 2. Marca las solicitudes asociadas como "Atendida" en la hoja de respuestas.
- * 3. Descuenta el inventario de filamento:
+ *    TODAS las filas de la cama en el Sheets de Historial.
+ * 2. Descuenta el inventario de filamento:
  *    - Exitoso  → gramos estimados por ítem + desperdicio reportado.
  *    - Fallido  → solo el desperdicio reportado (o los gramos estimados si no se reportó).
- * 4. Suma las horas de impresión a la impresora.
+ * 3. Suma las horas de impresión a la impresora.
+ *
+ * NOTA: NO modifica el estado de las solicitudes vinculadas; permanecen como
+ * estaban (p. ej. "Aprobada"). El paso a "Atendida" lo realiza manualmente el
+ * usuario desde la ventana de Solicitudes.
  */
 export async function finalizarProyecto(
   codigo: string,
@@ -74,22 +77,7 @@ export async function finalizarProyecto(
   // 1. Historial
   const filas = await b.finalizarProyectoEnHistorial(codigo, resultado, desperdicio ?? '', comentarios);
 
-  // 2. Solicitudes → Atendida
-  const solicitudes = await b.getSolicitudes();
-  for (const r of filas) {
-    const sol = solicitudes.find((s) => s.id === r.marcaTemporal);
-    if (sol) {
-      try {
-        await b.actualizarEstadoSolicitud(sol.id, sol.fila, 'Atendida');
-      } catch (e) {
-        advertencias.push(`No se pudo marcar como Atendida la solicitud de ${sol.nombre}: ${(e as Error).message}`);
-      }
-    } else if (r.marcaTemporal) {
-      advertencias.push(`La solicitud con marca temporal "${r.marcaTemporal}" no se encontró en la hoja de respuestas.`);
-    }
-  }
-
-  // 3. Inventario
+  // 2. Inventario
   const filamentos = await b.getFilamentos();
   const totalEstimado = filas.reduce((acc, r) => acc + num(r.gramos), 0);
 
@@ -126,7 +114,7 @@ export async function finalizarProyecto(
     });
   }
 
-  // 4. Horas de impresora
+  // 3. Horas de impresora
   const horas = filas.reduce((acc, r) => acc + parsearHoras(r.tiempoHoras), 0);
   if (horas > 0) {
     const impresoras = await b.getImpresoras();

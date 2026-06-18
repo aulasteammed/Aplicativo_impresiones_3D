@@ -18,8 +18,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const datos = (await req.json()) as NuevaSolicitud;
-    if (!datos.nombre?.trim() || !datos.contacto?.trim()) {
-      return NextResponse.json({ error: 'Nombre y correo/contacto son obligatorios' }, { status: 400 });
+    if (!datos.nombre?.trim() || !datos.correo?.trim()) {
+      return NextResponse.json({ error: 'Nombre y correo electrónico son obligatorios' }, { status: 400 });
     }
     if (esModoDemo() || !formConfigurado()) {
       await crearSolicitudDemo({ ...datos, descripcionPieza: datos.descripcionPieza });

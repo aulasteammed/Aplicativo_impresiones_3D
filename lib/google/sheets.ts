@@ -55,25 +55,28 @@ async function anexarFilas(spreadsheetId: string, range: string, values: (string
 }
 
 // ---------------------------------------------------------------------------
-// SOLICITUDES (hoja de respuestas del Form) — columnas A..L
+// SOLICITUDES (hoja de respuestas del Form) — columnas A..M
+//   A marca temporal · B nombre · C correo · D rol · E programa · F motivo ·
+//   G servicio · H descripción · I objetivo · J archivos · K fecha tentativa ·
+//   L celular (pregunta nueva) · M estado (gestionado por la app)
 // ---------------------------------------------------------------------------
 
 export async function getSolicitudes(): Promise<Solicitud[]> {
-  const filas = await leerRango(config.sheetSolicitudesId, `'${config.tabSolicitudes}'!A2:L`);
+  const filas = await leerRango(config.sheetSolicitudesId, `'${config.tabSolicitudes}'!A2:M`);
   return filas
     .map((f, i) => filaASolicitud(f, i + 2))
     .filter((s) => !!s.marcaTemporal);
 }
 
 function filaASolicitud(f: string[], fila: number): Solicitud {
-  const contacto = f[2] ?? '';
+  const correoCol = f[2] ?? ''; // C: ahora se pide exclusivamente el correo
   return {
     id: f[0] ?? '',
     fila,
     marcaTemporal: f[0] ?? '',
     nombre: f[1] ?? '',
-    contacto,
-    correo: extraerCorreo(contacto),
+    contacto: correoCol,
+    correo: extraerCorreo(correoCol),
     rol: f[3] ?? '',
     programa: f[4] ?? '',
     motivo: f[5] ?? '',
@@ -82,11 +85,12 @@ function filaASolicitud(f: string[], fila: number): Solicitud {
     objetivoPieza: f[8] ?? '',
     archivos: f[9] ?? '',
     fechaTentativa: f[10] ?? '',
-    estado: normalizarEstado(f[11]),
+    celular: f[11] ?? '',            // L: "Número de celular de contacto"
+    estado: normalizarEstado(f[12]), // M: estado de la solicitud
   };
 }
 
-/** Actualiza la columna L (estado) verificando que la fila siga correspondiendo
+/** Actualiza la columna M (estado) verificando que la fila siga correspondiendo
  *  a la marca temporal; si la fila se movió, la vuelve a buscar. */
 export async function actualizarEstadoSolicitud(id: string, fila: number, estado: EstadoSolicitud): Promise<void> {
   const tab = config.tabSolicitudes;
@@ -98,7 +102,7 @@ export async function actualizarEstadoSolicitud(id: string, fila: number, estado
     if (idx === -1) throw new Error(`No se encontró la solicitud con marca temporal "${id}"`);
     filaReal = idx + 2;
   }
-  await escribirRango(config.sheetSolicitudesId, `'${tab}'!L${filaReal}`, [[estado]]);
+  await escribirRango(config.sheetSolicitudesId, `'${tab}'!M${filaReal}`, [[estado]]);
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +240,7 @@ export async function agregarItemsProyecto(
   await asegurarColumnasExtra();
   const registros = await getHistorial();
   const existentes = registros.filter((r) => r.codigo === codigo);
-  if (existentes.length === 0) throw new Error(`Proyecto ${codigo} no encontrado`);
+  if (existentes.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   const ref = existentes[0];
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
   const filas = items.map((it) =>
@@ -248,7 +252,7 @@ export async function agregarItemsProyecto(
 export async function actualizarEstadoProyecto(codigo: string, estado: EstadoProyecto): Promise<void> {
   const registros = await getHistorial();
   const filas = registros.filter((r) => r.codigo === codigo);
-  if (filas.length === 0) throw new Error(`Proyecto ${codigo} no encontrado`);
+  if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   for (const r of filas) {
     await escribirRango(config.sheetHistorialId, `'${config.tabHistorial}'!P${r.fila}`, [[estado]]);
   }
@@ -259,7 +263,7 @@ export async function finalizarProyectoEnHistorial(
 ): Promise<RegistroHistorial[]> {
   const registros = await getHistorial();
   const filas = registros.filter((r) => r.codigo === codigo);
-  if (filas.length === 0) throw new Error(`Proyecto ${codigo} no encontrado`);
+  if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   for (const r of filas) {
     await escribirRango(
       config.sheetHistorialId,

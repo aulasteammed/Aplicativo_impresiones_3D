@@ -18,14 +18,16 @@ interface DemoStore {
 }
 
 function seed(): DemoStore {
+  // Columnas: A marca · B nombre · C correo · D rol · E programa · F motivo ·
+  // G servicio · H descripción · I objetivo · J fecha · K celular · L estado
   const solicitudesBase = [
-    ['23/02/2026 10:30:51', 'Víctor Manuel Posada', 'vicmanuelph@gmail.com', 'Estudiante', 'Ingeniería Mecánica', 'Asignaturas de proyectos en ingeniería', 'Impresión 3D', 'Piñón', 'Transmitir potencia en banco de pruebas', '26/02/2026', 'Aprobada'],
-    ['17/03/2026 10:45:09', 'Maria Camila Cantero Hernandez', 'mcanteroh@unal.edu.co', 'Estudiante', 'Ingeniería Civil', 'Investigación', 'Impresión 3D', 'Base de 22cm x 22cm con orificios para acople de agujas', 'Simulador de lluvias para tesis de maestría', '01/04/2026', 'Atendida'],
-    ['28/04/2026 10:06:11', 'Jhorlan Daniel Ortega', 'jhortegad@unal.edu.co', 'Estudiante', 'Ingeniería de Sistemas e Informática', 'Asignaturas de proyectos en ingeniería', 'Impresión 3D', 'Módulo de jardín vertical (2 módulos + sistema de riego capilar)', 'Jardín vertical para fachadas — mitigar isla de calor urbana', '29/04/2026', 'Aprobada'],
-    ['02/06/2026 09:15:00', 'Juan Pablo Gonzalez Ortiz', 'jpgonzalezo@unal.edu.co', 'Estudiante', 'Ingeniería Mecánica', 'Proyecto académico', 'Impresión 3D', 'Soporte en L con orificios de anclaje', 'Soporte para sensor en banco de pruebas', '15/06/2026', 'Aprobada'],
-    ['08/06/2026 14:22:30', 'Laura Restrepo', 'lrestrepo@unal.edu.co', 'Profesor(a)', 'Ingeniería Química', 'Investigación', 'Modelado 3D e Impresión 3D', 'Carcasa para prototipo de sensor de pH', 'Protección de electrónica en ambiente húmedo', '20/06/2026', 'En Revisión'],
-    ['10/06/2026 08:05:12', 'Simón Pedro Yarce Giraldo', 'syarce@unal.edu.co', 'Estudiante', 'Ingeniería Eléctrica', 'Proyecto personal', 'Impresión 3D', 'Cono con base de fijación', 'Pieza de señalización para dron', '18/06/2026', ''],
-    ['10/06/2026 16:40:45', 'Toma Hack', 'vposada@unal.edu.co', 'Contratista', '', 'Curso académico', 'Modelado 3D', 'Hack', 'Material didáctico', '24/06/2026', ''],
+    ['23/02/2026 10:30:51', 'Víctor Manuel Posada', 'vicmanuelph@gmail.com', 'Estudiante', 'Ingeniería Mecánica', 'Asignaturas de proyectos en ingeniería', 'Impresión 3D', 'Piñón', 'Transmitir potencia en banco de pruebas', '26/02/2026', '300 123 4567', 'Aprobada'],
+    ['17/03/2026 10:45:09', 'Maria Camila Cantero Hernandez', 'mcanteroh@unal.edu.co', 'Estudiante', 'Ingeniería Civil', 'Investigación', 'Impresión 3D', 'Base de 22cm x 22cm con orificios para acople de agujas', 'Simulador de lluvias para tesis de maestría', '01/04/2026', '301 234 5678', 'Atendida'],
+    ['28/04/2026 10:06:11', 'Jhorlan Daniel Ortega', 'jhortegad@unal.edu.co', 'Estudiante', 'Ingeniería de Sistemas e Informática', 'Asignaturas de proyectos en ingeniería', 'Impresión 3D', 'Módulo de jardín vertical (2 módulos + sistema de riego capilar)', 'Jardín vertical para fachadas — mitigar isla de calor urbana', '29/04/2026', '302 345 6789', 'Aprobada'],
+    ['02/06/2026 09:15:00', 'Juan Pablo Gonzalez Ortiz', 'jpgonzalezo@unal.edu.co', 'Estudiante', 'Ingeniería Mecánica', 'Proyecto académico', 'Impresión 3D', 'Soporte en L con orificios de anclaje', 'Soporte para sensor en banco de pruebas', '15/06/2026', '311 456 7890', 'Aprobada'],
+    ['08/06/2026 14:22:30', 'Laura Restrepo', 'lrestrepo@unal.edu.co', 'Profesor(a)', 'Ingeniería Química', 'Investigación', 'Modelado 3D e Impresión 3D', 'Carcasa para prototipo de sensor de pH', 'Protección de electrónica en ambiente húmedo', '20/06/2026', '312 567 8901', 'En Revisión'],
+    ['10/06/2026 08:05:12', 'Simón Pedro Yarce Giraldo', 'syarce@unal.edu.co', 'Estudiante', 'Ingeniería Eléctrica', 'Proyecto personal', 'Impresión 3D', 'Cono con base de fijación', 'Pieza de señalización para dron', '18/06/2026', '313 678 9012', ''],
+    ['10/06/2026 16:40:45', 'Toma Hack', 'vposada@unal.edu.co', 'Contratista', '', 'Curso académico', 'Modelado 3D', 'Hack', 'Material didáctico', '24/06/2026', '', ''],
   ];
 
   const solicitudes: Solicitud[] = solicitudesBase.map((s, i) => ({
@@ -43,7 +45,8 @@ function seed(): DemoStore {
     objetivoPieza: s[8],
     archivos: '',
     fechaTentativa: s[9],
-    estado: (s[10] || 'Nueva') as EstadoSolicitud,
+    celular: s[10],
+    estado: (s[11] || 'Nueva') as EstadoSolicitud,
   }));
 
   const historial: RegistroHistorial[] = [
@@ -117,8 +120,9 @@ export async function crearSolicitudDemo(datos: Partial<Solicitud>): Promise<voi
     fila: st.solicitudes.length + 2,
     marcaTemporal: marca,
     nombre: datos.nombre ?? '',
-    contacto: datos.contacto ?? '',
-    correo: extraerCorreo(datos.contacto ?? ''),
+    contacto: datos.correo ?? '',
+    correo: extraerCorreo(datos.correo ?? ''),
+    celular: datos.celular ?? '',
     rol: datos.rol ?? '',
     programa: datos.programa ?? '',
     motivo: datos.motivo ?? '',
@@ -176,7 +180,7 @@ export async function agregarItemsProyecto(
 ): Promise<void> {
   const st = store();
   const ref = st.historial.find((r) => r.codigo === codigo);
-  if (!ref) throw new Error(`Proyecto ${codigo} no encontrado`);
+  if (!ref) throw new Error(`Cama ${codigo} no encontrada`);
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
   for (const it of items) {
     const sol = porId.get(it.solicitudId);
@@ -211,7 +215,7 @@ export async function finalizarProyectoEnHistorial(
   codigo: string, resultado: string, desperdicio: number | '', comentarios: string,
 ): Promise<RegistroHistorial[]> {
   const filas = store().historial.filter((r) => r.codigo === codigo);
-  if (filas.length === 0) throw new Error(`Proyecto ${codigo} no encontrado`);
+  if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   for (const r of filas) {
     r.estado = 'Finalizada';
     r.resultado = resultado;

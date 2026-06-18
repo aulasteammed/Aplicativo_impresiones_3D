@@ -6,7 +6,8 @@ import { config } from '../config';
 
 export interface NuevaSolicitud {
   nombre: string;
-  contacto: string;
+  correo: string;   // columna C del Form ("Correo electrónico")
+  celular: string;  // columna L del Form ("Número de celular de contacto")
   rol: string;
   programa: string;
   motivo: string;
@@ -30,7 +31,10 @@ export async function enviarAlForm(datos: NuevaSolicitud): Promise<void> {
     if (entry && valor) params.set(entry, valor);
   };
   set(e.nombre, datos.nombre);
-  set(e.contacto, datos.contacto);
+  // El entry de la columna C no cambia al editar el título de la pregunta: hoy
+  // solo recibe el correo. El celular va a la pregunta nueva (columna L).
+  set(e.contacto, datos.correo);
+  set(e.celular, datos.celular);
   set(e.rol, datos.rol);
   set(e.programa, datos.programa);
   set(e.motivo, datos.motivo);

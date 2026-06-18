@@ -29,7 +29,7 @@ export default function PaginaSolicitudes() {
       if (filtroEstado && s.estado !== filtroEstado) return false;
       if (filtroMotivo && s.motivo !== filtroMotivo) return false;
       if (!q) return true;
-      return [s.nombre, s.correo, s.motivo, s.descripcionPieza, s.programa, s.servicio]
+      return [s.nombre, s.correo, s.celular, s.motivo, s.descripcionPieza, s.programa, s.servicio]
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
   }, [solicitudes, busqueda, filtroEstado, filtroMotivo]);
@@ -141,8 +141,9 @@ export default function PaginaSolicitudes() {
               <span className="text-xs text-slate-500">{detalle.marcaTemporal}</span>
             </div>
             <CampoDetalle etiqueta="Nombres y apellidos / grupo" valor={detalle.nombre} />
-            <CampoDetalle etiqueta="Correo y contacto" valor={detalle.contacto} />
             <div className="grid grid-cols-2 gap-3">
+              <CampoDetalle etiqueta="Correo electrónico" valor={detalle.correo || '—'} />
+              <CampoDetalle etiqueta="Celular de contacto" valor={detalle.celular || '—'} />
               <CampoDetalle etiqueta="Rol" valor={detalle.rol} />
               <CampoDetalle etiqueta="Programa académico" valor={detalle.programa} />
               <CampoDetalle etiqueta="Motivo" valor={detalle.motivo} />
@@ -306,7 +307,7 @@ const ROLES = ['Estudiante', 'Profesor(a)', 'Contratista', 'Administrativo', 'Eg
 
 function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (texto: string) => void }) {
   const [f, setF] = useState({
-    nombre: '', contacto: '', rol: ROLES[0], programa: '', motivo: MOTIVOS[0],
+    nombre: '', correo: '', celular: '', rol: ROLES[0], programa: '', motivo: MOTIVOS[0],
     servicio: SERVICIOS[0], descripcionPieza: '', objetivoPieza: '', fechaTentativa: '',
   });
   const [enviando, setEnviando] = useState(false);
@@ -344,8 +345,12 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
             <input className="input" value={f.nombre} onChange={set('nombre')} />
           </div>
           <div>
-            <label className="label">Correo electrónico y contacto *</label>
-            <input className="input" value={f.contacto} onChange={set('contacto')} placeholder="correo@unal.edu.co — 300 000 0000" />
+            <label className="label">Correo electrónico *</label>
+            <input className="input" value={f.correo} onChange={set('correo')} placeholder="correo@unal.edu.co" />
+          </div>
+          <div>
+            <label className="label">Número de celular de contacto</label>
+            <input className="input" value={f.celular} onChange={set('celular')} placeholder="300 000 0000" />
           </div>
           <div>
             <label className="label">Rol</label>
@@ -378,7 +383,7 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={crear} disabled={enviando || !f.nombre.trim() || !f.contacto.trim()}>
+          <button className="btn-primary" onClick={crear} disabled={enviando || !f.nombre.trim() || !f.correo.trim()}>
             {enviando ? 'Enviando…' : 'Crear solicitud'}
           </button>
         </div>

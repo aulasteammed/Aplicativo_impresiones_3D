@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     for (const it of items) {
       if (!it.solicitudId || !it.material || !(it.gramos > 0) || !(it.tiempoHoras > 0)) {
         return NextResponse.json(
-          { error: 'Cada solicitud del proyecto debe tener tiempo (h), gramos y tipo de material' },
+          { error: 'Cada solicitud de la cama debe tener tiempo (h), gramos y tipo de material' },
           { status: 400 },
         );
       }

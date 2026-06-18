@@ -17,7 +17,7 @@ export interface DatosCorreoEstado {
 const MENSAJES_ESTADO: Record<string, { titulo: string; cuerpo: string; color: string }> = {
   'Aprobada': {
     titulo: '¡Tu solicitud fue aprobada!',
-    cuerpo: 'Nos complace informarte que tu solicitud de impresión/modelado 3D ha sido <b>APROBADA</b>. Pronto será programada en un proyecto de impresión.',
+    cuerpo: 'Nos complace informarte que tu solicitud de impresión/modelado 3D ha sido <b>APROBADA</b>. Pronto será programada en una cama de impresión.',
     color: '#16a34a',
   },
   'Rechazada': {

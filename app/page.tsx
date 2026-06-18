@@ -89,16 +89,16 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <h2 className="mb-4 font-semibold">Proyectos de impresión activos</h2>
+        <h2 className="mb-4 font-semibold">Camas de impresión activas</h2>
         {datos.proyectosActivos.length === 0 ? (
-          <p className="text-sm text-slate-500">No hay proyectos activos.</p>
+          <p className="text-sm text-slate-500">No hay camas activas.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-slate-200">
                 <tr>
                   <th className="th">Código</th>
-                  <th className="th">Proyecto</th>
+                  <th className="th">Cama</th>
                   <th className="th">Impresora</th>
                   <th className="th">Solicitudes</th>
                   <th className="th">Material (g)</th>

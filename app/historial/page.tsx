@@ -73,7 +73,7 @@ export default function PaginaHistorial() {
             <table className="w-full">
               <thead className="border-b border-slate-200">
                 <tr>
-                  <th className="th">Proyecto</th>
+                  <th className="th">Cama</th>
                   <th className="th">Solicitante</th>
                   <th className="th">Pieza</th>
                   <th className="th">Impresora</th>
@@ -110,7 +110,7 @@ export default function PaginaHistorial() {
       <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Registro — ${detalle?.codigo || 'sin código'}`} ancho="max-w-3xl">
         {detalle && (
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Campo etiqueta="Proyecto" valor={`${detalle.nombreProyecto || '—'} (${detalle.codigo || 'sin código'})`} />
+            <Campo etiqueta="Cama" valor={`${detalle.nombreProyecto || '—'} (${detalle.codigo || 'sin código'})`} />
             <Campo etiqueta="Marca temporal solicitud" valor={detalle.marcaTemporal} />
             <Campo etiqueta="Solicitante" valor={detalle.nombre} />
             <Campo etiqueta="Correo" valor={detalle.correo} />

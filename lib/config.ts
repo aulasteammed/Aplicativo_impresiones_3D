@@ -18,7 +18,8 @@ export const config = {
   formUrl: process.env.FORM_URL ?? '', // https://docs.google.com/forms/d/e/XXXX/formResponse
   formEntries: {
     nombre: process.env.FORM_ENTRY_NOMBRE ?? '',
-    contacto: process.env.FORM_ENTRY_CONTACTO ?? '',
+    contacto: process.env.FORM_ENTRY_CONTACTO ?? '', // pregunta "Correo electrónico" (columna C)
+    celular: process.env.FORM_ENTRY_CELULAR ?? '',   // pregunta "Número de celular de contacto" (columna L)
     rol: process.env.FORM_ENTRY_ROL ?? '',
     programa: process.env.FORM_ENTRY_PROGRAMA ?? '',
     motivo: process.env.FORM_ENTRY_MOTIVO ?? '',

@@ -12,9 +12,12 @@ export interface Solicitud {
   fila: number;
   marcaTemporal: string;
   nombre: string;
+  /** Texto de contacto crudo de la columna C (hoy contiene solo el correo) */
   contacto: string;
-  /** Correo extraído del campo de contacto */
+  /** Correo electrónico del solicitante (columna C) */
   correo: string;
+  /** Número de celular de contacto (columna L) */
+  celular: string;
   rol: string;
   programa: string;
   motivo: string;

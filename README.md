@@ -1,16 +1,16 @@
 # Aula STEAM — Aplicativo de Gestión de Impresión 3D
 
-Aplicativo web para gestionar las solicitudes, proyectos de impresión, historial e inventario de impresión y diseño 3D del **Aula STEAM Sonny Jiménez** (Universidad Nacional de Colombia, sede Medellín).
+Aplicativo web para gestionar las solicitudes, camas de impresión, historial e inventario de impresión y diseño 3D del **Aula STEAM Sonny Jiménez** (Universidad Nacional de Colombia, sede Medellín).
 
-Usa los **Google Sheets existentes como base de datos** (la hoja de respuestas del Google Forms y el historial de impresiones), envía **correos HTML** de notificación vía Google Apps Script y analiza **capturas del slicer con IA (Gemini)** para extraer parámetros de impresión.
+Usa los **Google Sheets existentes como base de datos** (la hoja de respuestas del Google Forms y el historial de impresiones), envía **correos HTML** de notificación vía Google Apps Script y extrae parámetros de impresión de **capturas del slicer mediante OCR local (Tesseract.js, sin IA)**.
 
 ## Las 5 ventanas
 
 | Ventana | Ruta | Función |
 |---|---|---|
-| 1. Dashboard | `/` | KPIs: solicitudes nuevas, tasa de éxito/fallo, tiempo por impresora, alertas de stock bajo, proyectos activos, próximas entregas |
+| 1. Dashboard | `/` | KPIs: solicitudes nuevas, tasa de éxito/fallo, tiempo por impresora, alertas de stock bajo, camas activas, próximas entregas |
 | 2. Solicitudes | `/solicitudes` | Tabla conectada a la hoja de respuestas del Form: filtros, detalle, cambio de estado con notificación por correo, creación de solicitudes |
-| 3. Proyectos | `/proyectos` | Creación/edición de proyectos de impresión sobre solicitudes aprobadas, análisis con IA de capturas del slicer, finalización con resultado/desperdicio/comentarios |
+| 3. Camas de impresión | `/proyectos` | Creación/edición de camas de impresión sobre solicitudes aprobadas, análisis OCR de capturas del slicer, finalización con resultado/desperdicio/comentarios |
 | 4. Historial | `/historial` | Registro completo de impresiones (solo lectura) con filtros y KPIs |
 | 5. Inventario | `/inventario` | Filamentos (alertas de stock bajo, movimientos), impresoras y mantenimiento |
 
@@ -57,7 +57,7 @@ Para que las solicitudes creadas en la app queden como **respuestas reales del f
 
 ### 3. Análisis de capturas del slicer (OCR local, sin IA)
 
-No requiere configuración ni claves de API. Al crear un proyecto puede **subir capturas** del slicer (Bambu Studio, Cura, PrusaSlicer) y el aplicativo extrae **gramos, tiempo y material** mediante OCR (Tesseract.js) que corre localmente en el servidor —sin enviar nada a servicios de IA externos—. La primera ejecución descarga el modelo de OCR en inglés (~5 MB) y lo deja en caché.
+No requiere configuración ni claves de API. Al crear una cama de impresión puede **subir capturas** del slicer (Bambu Studio, Cura, PrusaSlicer) y el aplicativo extrae **gramos, tiempo y material** mediante OCR (Tesseract.js) que corre localmente en el servidor —sin enviar nada a servicios de IA externos—. La primera ejecución descarga el modelo de OCR en inglés (~5 MB) y lo deja en caché.
 
 Para mejores resultados, suba la captura **nítida y completa** del panel con el resumen del corte (p. ej. el panel *Slicing Result* de Bambu o el diálogo *Save to Disk* de Cura).
 
@@ -79,8 +79,8 @@ Para mejores resultados, suba la captura **nítida y completa** del panel con el
 
 ## Lógica de negocio importante
 
-- **Estados de solicitud**: `Nueva` (celda vacía en la hoja), `En Revisión`, `Aprobada`, `Rechazada` y `Atendida`. El valor histórico "Aceptada" se interpreta como `Aprobada`. Al finalizar un proyecto, sus solicitudes pasan automáticamente a `Atendida` (así no vuelven a aparecer como seleccionables).
-- **Código de proyecto**: `IMP-AAMMDD-NN` (fecha + consecutivo del día), generado automáticamente.
+- **Estados de solicitud**: `Nueva` (celda vacía en la hoja), `En Revisión`, `Aprobada`, `Rechazada` y `Atendida`. El valor histórico "Aceptada" se interpreta como `Aprobada`. Al finalizar una cama de impresión **no** se cambia el estado de sus solicitudes: permanecen como estaban (p. ej. `Aprobada`) y el paso a `Atendida` lo realiza manualmente el usuario desde la ventana de Solicitudes.
+- **Código de cama**: `IMP-AAMMDD-NN` (fecha + consecutivo del día), generado automáticamente.
 - **Descuento de inventario al finalizar**:
   - Resultado **Exitoso** → se descuentan los gramos estimados de cada solicitud + el desperdicio reportado (repartido proporcionalmente entre los rollos usados).
   - Resultado **Fallido** → se descuenta solo el desperdicio reportado (o los gramos estimados si no se reportó).
@@ -98,7 +98,7 @@ Para mejores resultados, suba la captura **nítida y completa** del panel con el
 
 ```
 app/            Páginas (las 5 ventanas) y API routes
-lib/            Capa de datos: Google Sheets, modo demo, Gemini, correo, reglas de negocio
+lib/            Capa de datos: Google Sheets, modo demo, OCR (Tesseract.js), correo, reglas de negocio
 components/     Sidebar y componentes UI compartidos
 apps-script/    Código para pegar en script.google.com (correos + trigger del Form)
 ```

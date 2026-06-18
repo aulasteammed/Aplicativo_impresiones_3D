@@ -135,7 +135,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full">
             <thead className="border-b border-slate-200">
-              <tr><th className="th">Fecha</th><th className="th">Filamento</th><th className="th">Proyecto</th><th className="th">Gramos</th><th className="th">Motivo</th></tr>
+              <tr><th className="th">Fecha</th><th className="th">Filamento</th><th className="th">Cama</th><th className="th">Gramos</th><th className="th">Motivo</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(dMov?.movimientos ?? []).map((m, i) => (

@@ -1,8 +1,8 @@
 'use client';
 
-// Ventana 3 — Proyectos de impresión: agrupan una o varias solicitudes aprobadas
-// en una impresión. Incluye creación, edición (añadir solicitudes), análisis de
-// capturas del slicer con IA y finalización (resultado + desperdicio + comentarios).
+// Ventana 3 — Camas de impresión: agrupan una o varias solicitudes aprobadas
+// en una impresión. Incluye creación, edición (añadir solicitudes), análisis OCR
+// de capturas del slicer y finalización (resultado + desperdicio + comentarios).
 
 import { useMemo, useState } from 'react';
 import {
@@ -48,12 +48,12 @@ export default function PaginaProyectos() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Proyectos de impresión</h1>
-          <p className="text-sm text-slate-500">Cada proyecto agrupa una o varias solicitudes aprobadas en una impresión</p>
+          <h1 className="text-2xl font-bold">Camas de impresión</h1>
+          <p className="text-sm text-slate-500">Cada cama agrupa una o varias solicitudes aprobadas en una impresión</p>
         </div>
         <div className="flex gap-2">
           <BotonRecargar onClick={recargar} cargando={cargando} />
-          <button className="btn-primary" onClick={() => setModalCrear(true)}>+ Nuevo proyecto</button>
+          <button className="btn-primary" onClick={() => setModalCrear(true)}>+ Nueva cama</button>
         </div>
       </div>
 
@@ -74,7 +74,7 @@ export default function PaginaProyectos() {
             <thead className="border-b border-slate-200">
               <tr>
                 <th className="th">Código</th>
-                <th className="th">Proyecto</th>
+                <th className="th">Cama</th>
                 <th className="th">Impresora</th>
                 <th className="th">Solicitudes</th>
                 <th className="th">Material</th>
@@ -115,7 +115,7 @@ export default function PaginaProyectos() {
                 );
               })}
               {filtrados.length === 0 && (
-                <tr><td colSpan={8} className="td py-8 text-center text-slate-500">No hay proyectos. Cree el primero con &quot;+ Nuevo proyecto&quot;.</td></tr>
+                <tr><td colSpan={8} className="td py-8 text-center text-slate-500">No hay camas. Cree la primera con &quot;+ Nueva cama&quot;.</td></tr>
               )}
             </tbody>
           </table>
@@ -123,7 +123,7 @@ export default function PaginaProyectos() {
       </div>
 
       {/* Detalle */}
-      <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Proyecto ${detalle?.codigo ?? ''}`} ancho="max-w-3xl">
+      <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Cama ${detalle?.codigo ?? ''}`} ancho="max-w-3xl">
         {detalle && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -277,10 +277,10 @@ function ModalProyecto({
         });
       }
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Error guardando el proyecto');
+      if (!res.ok) throw new Error(body.error || 'Error guardando la cama');
       onGuardado(esEdicion
-        ? `Solicitudes añadidas al proyecto ${proyectoExistente!.codigo}.`
-        : `Proyecto creado con código ${body.codigo}.`);
+        ? `Solicitudes añadidas a la cama ${proyectoExistente!.codigo}.`
+        : `Cama creada con código ${body.codigo}.`);
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -293,7 +293,7 @@ function ModalProyecto({
     <Modal
       abierto
       onCerrar={onCerrar}
-      titulo={esEdicion ? `Añadir solicitudes a ${proyectoExistente!.codigo}` : 'Nuevo proyecto de impresión'}
+      titulo={esEdicion ? `Añadir solicitudes a ${proyectoExistente!.codigo}` : 'Nueva cama de impresión'}
       ancho="max-w-5xl"
     >
       <div className="space-y-5">
@@ -302,7 +302,7 @@ function ModalProyecto({
         {!esEdicion && (
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="label">Nombre del proyecto *</label>
+              <label className="label">Nombre de la cama *</label>
               <input className="input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Piezas semana 24 — PETG" />
             </div>
             <div>
@@ -436,7 +436,7 @@ function ModalProyecto({
             onClick={guardar}
             disabled={guardando || items.length === 0 || (!esEdicion && (!nombre.trim() || !impresora))}
           >
-            {guardando ? 'Guardando…' : esEdicion ? 'Añadir al proyecto' : 'Crear proyecto'}
+            {guardando ? 'Guardando…' : esEdicion ? 'Añadir a la cama' : 'Crear cama'}
           </button>
         </div>
       </div>
@@ -475,8 +475,8 @@ function ModalFinalizar({
         }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Error finalizando el proyecto');
-      onFinalizado(`Proyecto ${proyecto.codigo} finalizado (${resultado}). Solicitudes marcadas como Atendidas e inventario actualizado.`, body.advertencias ?? []);
+      if (!res.ok) throw new Error(body.error || 'Error finalizando la cama');
+      onFinalizado(`Cama ${proyecto.codigo} finalizada (${resultado}). Inventario actualizado. Recuerde marcar las solicitudes como "Atendida" desde la ventana de Solicitudes.`, body.advertencias ?? []);
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -486,12 +486,13 @@ function ModalFinalizar({
   }
 
   return (
-    <Modal abierto onCerrar={onCerrar} titulo={`Finalizar proyecto ${proyecto.codigo}`}>
+    <Modal abierto onCerrar={onCerrar} titulo={`Finalizar cama ${proyecto.codigo}`}>
       <div className="space-y-4">
         {error && <Aviso tipo="error">{error}</Aviso>}
         <Aviso tipo="info">
-          Al confirmar: se actualizarán las {proyecto.items.length} solicitud(es) del proyecto en el Sheets de historial,
-          se marcarán como <b>Atendida</b> en la hoja de respuestas y se descontará el filamento del inventario.
+          Al confirmar: se actualizarán las {proyecto.items.length} solicitud(es) de la cama en el Sheets de historial
+          y se descontará el filamento del inventario. El estado de las solicitudes <b>no cambia</b>: para marcarlas
+          como <b>Atendida</b>, hágalo manualmente desde la ventana de Solicitudes.
         </Aviso>
         <div>
           <label className="label">Resultado de impresión *</label>
