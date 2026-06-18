@@ -55,10 +55,11 @@ Para que las solicitudes creadas en la app queden como **respuestas reales del f
    - `FORM_URL`: el enlace público cambiando el final `/viewform` por `/formResponse`.
    - `FORM_ENTRY_NOMBRE`, `FORM_ENTRY_CONTACTO`, etc.: cada `entry.XXXXXXX` según la pregunta.
 
-### 3. IA — Gemini (análisis de capturas del slicer)
+### 3. Análisis de capturas del slicer (OCR local, sin IA)
 
-1. Entre a [aistudio.google.com](https://aistudio.google.com) con cualquier cuenta Google → **Get API key** → crear (la capa gratuita es suficiente).
-2. Péguela en `GEMINI_API_KEY`.
+No requiere configuración ni claves de API. Al crear un proyecto puede **subir capturas** del slicer (Bambu Studio, Cura, PrusaSlicer) y el aplicativo extrae **gramos, tiempo y material** mediante OCR (Tesseract.js) que corre localmente en el servidor —sin enviar nada a servicios de IA externos—. La primera ejecución descarga el modelo de OCR en inglés (~5 MB) y lo deja en caché.
+
+Para mejores resultados, suba la captura **nítida y completa** del panel con el resumen del corte (p. ej. el panel *Slicing Result* de Bambu o el diálogo *Save to Disk* de Cura).
 
 ### 4. Correo — Apps Script (cuenta Aula_steam_med@unal.edu.co)
 

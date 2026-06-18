@@ -28,10 +28,6 @@ export const config = {
     fecha: process.env.FORM_ENTRY_FECHA ?? '', // los forms de fecha usan _year/_month/_day
   },
 
-  // IA (Google Gemini)
-  geminiApiKey: process.env.GEMINI_API_KEY ?? '',
-  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
-
   // Correo vía Apps Script Web App
   appsScriptUrl: process.env.APPS_SCRIPT_URL ?? '',
   appsScriptToken: process.env.APPS_SCRIPT_TOKEN ?? '',

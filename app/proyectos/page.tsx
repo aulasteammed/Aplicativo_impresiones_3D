@@ -184,7 +184,7 @@ export default function PaginaProyectos() {
 }
 
 // ---------------------------------------------------------------------------
-// Modal de creación / edición de proyecto (incluye Análisis con IA)
+// Modal de creación / edición de proyecto (incluye Análisis OCR)
 // ---------------------------------------------------------------------------
 
 interface ItemForm extends ItemProyecto { _key: string }
@@ -338,16 +338,16 @@ function ModalProyecto({
 
         {items.length > 0 && (
           <>
-            {/* Análisis con IA */}
+            {/* Análisis OCR (visión artificial local, sin IA) */}
             <div className="rounded-xl border border-dashed border-steam-300 bg-steam-50/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-steam-700">✨ Análisis con IA (capturas del slicer)</p>
-                  <p className="text-xs text-slate-500">Suba capturas de Bambu Studio / Cura / Prusa y la IA extraerá gramos, tiempo y material.</p>
+                  <p className="font-semibold text-steam-700">🔍 Análisis OCR (capturas del slicer)</p>
+                  <p className="text-xs text-slate-500">Suba capturas de Bambu Studio / Cura / Prusa y el OCR extraerá gramos, tiempo y material localmente (sin IA).</p>
                 </div>
                 <label className="btn-secondary cursor-pointer">
                   {analizando ? 'Analizando…' : 'Subir capturas'}
-                  <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden disabled={analizando}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" multiple hidden disabled={analizando}
                     onChange={(e) => { analizarCapturas(e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
