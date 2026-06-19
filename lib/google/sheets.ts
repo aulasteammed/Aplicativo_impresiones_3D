@@ -5,9 +5,9 @@ import { google, sheets_v4 } from 'googleapis';
 import { config } from '../config';
 import {
   Solicitud, RegistroHistorial, Proyecto, ItemProyecto, EstadoSolicitud,
-  Filamento, MovimientoInventario, Impresora, Mantenimiento, EstadoProyecto,
+  Filamento, MovimientoInventario, Impresora, Mantenimiento, EstadoProyecto, UmbralAlerta,
 } from '../types';
-import { normalizarEstado, extraerCorreo, num, generarCodigoProyecto } from '../util';
+import { normalizarEstado, extraerCorreo, num } from '../util';
 
 let _sheets: sheets_v4.Sheets | null = null;
 
@@ -223,15 +223,20 @@ function itemAFilaHistorial(
 }
 
 export async function crearProyecto(
-  nombre: string, impresora: string, items: ItemProyecto[], solicitudes: Solicitud[],
+  codigo: string, impresora: string, items: ItemProyecto[], solicitudes: Solicitud[],
 ): Promise<string> {
   await asegurarColumnasExtra();
   const registros = await getHistorial();
-  const codigo = generarCodigoProyecto(registros.map((r) => r.codigo).filter(Boolean));
+  const codigoLimpio = codigo.trim();
+  const existentes = new Set(registros.map((r) => (r.codigo ?? '').trim().toLowerCase()).filter(Boolean));
+  if (existentes.has(codigoLimpio.toLowerCase())) {
+    throw new Error(`Ya existe una cama con el código "${codigoLimpio}". Use otro código.`);
+  }
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
-  const filas = items.map((it) => itemAFilaHistorial(codigo, nombre, impresora, 'Activa', it, porId.get(it.solicitudId)));
+  // El código es también el nombre/identificador visible de la cama (columna T).
+  const filas = items.map((it) => itemAFilaHistorial(codigoLimpio, codigoLimpio, impresora, 'Activa', it, porId.get(it.solicitudId)));
   await anexarFilas(config.sheetHistorialId, `'${config.tabHistorial}'!A1`, filas);
-  return codigo;
+  return codigoLimpio;
 }
 
 export async function agregarItemsProyecto(
@@ -283,6 +288,7 @@ const TABS_INVENTARIO: Record<string, string[]> = {
   Movimientos: ['Fecha', 'Filamento ID', 'Proyecto', 'Gramos', 'Motivo'],
   Impresoras: ['ID', 'Nombre', 'Modelo', 'Estado', 'Horas acumuladas', 'Notas'],
   Mantenimiento: ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo', 'Responsable'],
+  Umbrales: ['ID', 'Variable', 'Valor', 'Umbral (g)'],
 };
 
 let inventarioInicializado = false;
@@ -401,4 +407,49 @@ export async function registrarMantenimiento(m: Mantenimiento): Promise<void> {
   await anexarFilas(config.sheetInventarioId, `'Mantenimiento'!A1`, [
     [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable],
   ]);
+}
+
+// --- Umbrales de alerta (pestaña "Umbrales") -------------------------------
+
+/** Devuelve el sheetId (gid) de una pestaña por su título. */
+async function sheetIdPorTitulo(titulo: string): Promise<number> {
+  const meta = await cliente().spreadsheets.get({ spreadsheetId: config.sheetInventarioId });
+  const hoja = (meta.data.sheets ?? []).find((s) => s.properties?.title === titulo);
+  const sheetId = hoja?.properties?.sheetId;
+  if (sheetId == null) throw new Error(`Pestaña "${titulo}" no encontrada`);
+  return sheetId;
+}
+
+export async function getUmbrales(): Promise<UmbralAlerta[]> {
+  await asegurarInventario();
+  const filas = await leerRango(config.sheetInventarioId, `'Umbrales'!A2:D`);
+  return filas.filter((f) => f[0]).map((f) => ({
+    id: f[0],
+    variable: (f[1] ?? 'tipo') as UmbralAlerta['variable'],
+    valor: f[2] ?? '',
+    umbralGramos: num(f[3]),
+  }));
+}
+
+export async function crearUmbral(u: UmbralAlerta): Promise<void> {
+  await asegurarInventario();
+  await anexarFilas(config.sheetInventarioId, `'Umbrales'!A1`, [
+    [u.id, u.variable, u.valor, u.umbralGramos],
+  ]);
+}
+
+export async function eliminarUmbral(id: string): Promise<void> {
+  await asegurarInventario();
+  const filas = await leerRango(config.sheetInventarioId, `'Umbrales'!A2:A`);
+  const idx = filas.findIndex((f) => f[0] === id);
+  if (idx === -1) throw new Error(`Umbral ${id} no encontrado`);
+  const sheetId = await sheetIdPorTitulo('Umbrales');
+  await cliente().spreadsheets.batchUpdate({
+    spreadsheetId: config.sheetInventarioId,
+    requestBody: {
+      requests: [{
+        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } },
+      }],
+    },
+  });
 }

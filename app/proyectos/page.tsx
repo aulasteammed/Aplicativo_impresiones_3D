@@ -4,11 +4,12 @@
 // en una impresión. Incluye creación, edición (añadir solicitudes), análisis OCR
 // de capturas del slicer y finalización (resultado + desperdicio + comentarios).
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
+import { generarCodigoProyecto } from '@/lib/util';
 
 const MATERIALES = ['PLA', 'PETG', 'ABS', 'TPU', 'Resina', 'Otro'];
 
@@ -200,8 +201,9 @@ function ModalProyecto({
   const { datos: dSol } = useDatos<{ solicitudes: Solicitud[] }>('/api/solicitudes', 5 * 60_000);
   const { datos: dImp } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras', 5 * 60_000);
   const { datos: dFil } = useDatos<{ filamentos: Filamento[] }>('/api/inventario/filamentos', 5 * 60_000);
+  const { datos: dProy } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos', 5 * 60_000);
 
-  const [nombre, setNombre] = useState(proyectoExistente?.nombre ?? '');
+  const [codigo, setCodigo] = useState('');
   const [impresora, setImpresora] = useState(proyectoExistente?.impresora ?? '');
   const [items, setItems] = useState<ItemForm[]>([]);
   const [guardando, setGuardando] = useState(false);
@@ -214,6 +216,16 @@ function ModalProyecto({
   const aprobadas = (dSol?.solicitudes ?? []).filter((s) => s.estado === 'Aprobada' && !yaIncluidas.has(s.id));
   const impresoras = dImp?.impresoras ?? [];
   const filamentos = dFil?.filamentos ?? [];
+  const codigosExistentes = (dProy?.proyectos ?? []).map((p) => p.codigo);
+
+  // Al crear, sugiere un código automático (IMP-AAMMDD-NN) editable por el usuario.
+  useEffect(() => {
+    if (!esEdicion && !codigo && dProy) setCodigo(generarCodigoProyecto(codigosExistentes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dProy]);
+
+  const codigoNorm = codigo.trim().toLowerCase();
+  const codigoDuplicado = !!codigoNorm && codigosExistentes.some((c) => c.trim().toLowerCase() === codigoNorm);
 
   function alternarSolicitud(s: Solicitud) {
     const existe = items.find((i) => i.solicitudId === s.id);
@@ -258,6 +270,10 @@ function ModalProyecto({
   }
 
   async function guardar() {
+    if (!esEdicion) {
+      if (!codigo.trim()) { setError('Ingrese un código para la cama.'); return; }
+      if (codigoDuplicado) { setError(`Ya existe una cama con el código "${codigo.trim()}". Cambie el código para continuar.`); return; }
+    }
     setGuardando(true);
     setError('');
     try {
@@ -273,7 +289,7 @@ function ModalProyecto({
         res = await fetch('/api/proyectos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, impresora, items: payload }),
+          body: JSON.stringify({ codigo: codigo.trim(), impresora, items: payload }),
         });
       }
       const body = await res.json();
@@ -302,8 +318,18 @@ function ModalProyecto({
         {!esEdicion && (
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="label">Nombre de la cama *</label>
-              <input className="input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Piezas semana 24 — PETG" />
+              <label className="label">Código de la cama *</label>
+              <input
+                className={`input ${codigoDuplicado ? '!border-red-400 !ring-red-200' : ''}`}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                placeholder="IMP-AAMMDD-NN"
+              />
+              {codigoDuplicado ? (
+                <p className="mt-1 text-xs text-red-600">Ya existe una cama con este código. Cámbielo para continuar.</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">Generado automáticamente; puede modificarlo. Debe ser único.</p>
+              )}
             </div>
             <div>
               <label className="label">Impresora *</label>
@@ -434,7 +460,7 @@ function ModalProyecto({
           <button
             className="btn-primary"
             onClick={guardar}
-            disabled={guardando || items.length === 0 || (!esEdicion && (!nombre.trim() || !impresora))}
+            disabled={guardando || items.length === 0 || (!esEdicion && (!codigo.trim() || codigoDuplicado || !impresora))}
           >
             {guardando ? 'Guardando…' : esEdicion ? 'Añadir a la cama' : 'Crear cama'}
           </button>

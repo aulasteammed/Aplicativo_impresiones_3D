@@ -4,9 +4,9 @@
 
 import {
   Solicitud, RegistroHistorial, Filamento, MovimientoInventario,
-  Impresora, Mantenimiento, EstadoSolicitud, EstadoProyecto, ItemProyecto,
+  Impresora, Mantenimiento, EstadoSolicitud, EstadoProyecto, ItemProyecto, UmbralAlerta,
 } from './types';
-import { extraerCorreo, generarCodigoProyecto, hoyISO } from './util';
+import { extraerCorreo, hoyISO } from './util';
 
 interface DemoStore {
   solicitudes: Solicitud[];
@@ -15,6 +15,7 @@ interface DemoStore {
   movimientos: MovimientoInventario[];
   impresoras: Impresora[];
   mantenimientos: Mantenimiento[];
+  umbrales: UmbralAlerta[];
 }
 
 function seed(): DemoStore {
@@ -89,7 +90,11 @@ function seed(): DemoStore {
     { fecha: '2026-05-02', impresoraId: 'IMP-01', tipo: 'preventivo', descripcion: 'Limpieza de extrusor y lubricación de rieles', responsable: 'Monitor Aula STEAM' },
   ];
 
-  return { solicitudes, historial, filamentos, movimientos, impresoras, mantenimientos };
+  const umbrales: UmbralAlerta[] = [
+    { id: 'UMB-001', variable: 'tipo', valor: 'PLA', umbralGramos: 200 },
+  ];
+
+  return { solicitudes, historial, filamentos, movimientos, impresoras, mantenimientos, umbrales };
 }
 
 // Persiste entre hot-reloads del dev server
@@ -140,17 +145,19 @@ export async function getHistorial(): Promise<RegistroHistorial[]> {
 }
 
 export async function crearProyecto(
-  nombre: string, impresora: string, items: ItemProyecto[], solicitudes: Solicitud[],
+  codigo: string, impresora: string, items: ItemProyecto[], solicitudes: Solicitud[],
 ): Promise<string> {
   const st = store();
-  const codigo = generarCodigoProyecto(st.historial.map((r) => r.codigo).filter(Boolean));
+  const codigoLimpio = codigo.trim();
+  const existe = st.historial.some((r) => (r.codigo ?? '').trim().toLowerCase() === codigoLimpio.toLowerCase());
+  if (existe) throw new Error(`Ya existe una cama con el código "${codigoLimpio}". Use otro código.`);
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
   for (const it of items) {
     const sol = porId.get(it.solicitudId);
     st.historial.push({
       fila: st.historial.length + 2,
       marcaTemporal: it.solicitudId,
-      codigo,
+      codigo: codigoLimpio,
       nombre: sol?.nombre ?? it.nombre,
       correo: sol?.correo ?? it.correo,
       rol: sol?.rol ?? '',
@@ -168,11 +175,11 @@ export async function crearProyecto(
       resultado: '',
       desperdicio: '',
       comentarios: '',
-      nombreProyecto: nombre,
+      nombreProyecto: codigoLimpio,
       filamentoId: it.filamentoId ?? '',
     });
   }
-  return codigo;
+  return codigoLimpio;
 }
 
 export async function agregarItemsProyecto(
@@ -269,4 +276,19 @@ export async function getMantenimientos(): Promise<Mantenimiento[]> {
 
 export async function registrarMantenimiento(m: Mantenimiento): Promise<void> {
   store().mantenimientos.push(m);
+}
+
+export async function getUmbrales(): Promise<UmbralAlerta[]> {
+  return store().umbrales;
+}
+
+export async function crearUmbral(u: UmbralAlerta): Promise<void> {
+  store().umbrales.push(u);
+}
+
+export async function eliminarUmbral(id: string): Promise<void> {
+  const st = store();
+  const idx = st.umbrales.findIndex((u) => u.id === id);
+  if (idx === -1) throw new Error(`Umbral ${id} no encontrado`);
+  st.umbrales.splice(idx, 1);
 }

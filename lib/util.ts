@@ -42,6 +42,51 @@ export function hoyISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Normaliza texto para comparaciones tolerantes: sin acentos, en minúsculas,
+ *  sin espacios extremos y con espacios internos colapsados. */
+export function normalizarTexto(s: string | null | undefined): string {
+  return (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // quita diacríticos (acentos, diéresis)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/** Distancia de edición (Damerau-Levenshtein / alineación óptima de cadenas):
+ *  cuenta inserción, borrado, sustitución y TRANSPOSICIÓN de caracteres
+ *  adyacentes como 1 error (así "pteg"→"petg" o "balnco"→"blanco" = 1). */
+export function distanciaLevenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + costo);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); // transposición adyacente
+      }
+    }
+  }
+  return d[m][n];
+}
+
+/** ¿Dos textos coinciden de forma aproximada? Tolera mayúsculas/acentos/espacios
+ *  y pequeños typos (distancia de edición según la longitud). */
+export function coincideAprox(a: string, b: string): boolean {
+  const na = normalizarTexto(a);
+  const nb = normalizarTexto(b);
+  if (na === nb) return true; // incluye vacío ↔ vacío
+  const max = Math.max(na.length, nb.length);
+  const umbral = max <= 4 ? 1 : max <= 8 ? 2 : 3;
+  return distanciaLevenshtein(na, nb) <= umbral;
+}
+
 /** Genera el código de proyecto IMP-AAMMDD-NN a partir de los códigos existentes */
 export function generarCodigoProyecto(codigosExistentes: string[]): string {
   const d = new Date();

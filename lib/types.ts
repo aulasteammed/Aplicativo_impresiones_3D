@@ -125,6 +125,18 @@ export interface AlertaStock {
   umbral: number;
 }
 
+/** Variable sobre la que se define un umbral de alerta de stock */
+export type VariableUmbral = 'color' | 'marca' | 'tipo';
+
+/** Regla de umbral de alerta: cuando un rollo cuyo {variable} = {valor} cae por
+ *  debajo de {umbralGramos}, se marca como stock bajo. */
+export interface UmbralAlerta {
+  id: string;
+  variable: VariableUmbral;
+  valor: string;
+  umbralGramos: number;
+}
+
 export interface DashboardData {
   solicitudesNuevas: number;
   solicitudesTotal: number;

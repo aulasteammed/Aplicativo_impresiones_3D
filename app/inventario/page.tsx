@@ -4,7 +4,7 @@
 // impresoras y su mantenimiento/consumibles/repuestos.
 
 import { useMemo, useState } from 'react';
-import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario } from '@/lib/types';
+import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
@@ -47,19 +47,43 @@ export default function PaginaInventario() {
 
 const TIPOS = ['PLA', 'PETG', 'ABS', 'TPU', 'Resina', 'Otro'];
 
+function etiquetaVariable(v: VariableUmbral): string {
+  return v === 'color' ? 'Color' : v === 'marca' ? 'Marca' : 'Tipo de material';
+}
+
 function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; texto: string }) => void }) {
   const { datos, cargando, error, recargar } = useDatos<{ filamentos: Filamento[]; alertas: AlertaStock[] }>('/api/inventario/filamentos');
   const { datos: dMov, recargar: recargarMov } = useDatos<{ movimientos: MovimientoInventario[] }>('/api/inventario/movimientos');
+  const { datos: dUmb, recargar: recargarUmb } = useDatos<{ umbrales: UmbralAlerta[] }>('/api/inventario/umbrales');
   const [busqueda, setBusqueda] = useState('');
   const [editando, setEditando] = useState<Filamento | 'nuevo' | null>(null);
   const [verMovimientos, setVerMovimientos] = useState(false);
+  const [crearUmbral, setCrearUmbral] = useState(false);
 
   const filamentos = datos?.filamentos ?? [];
+  const umbrales = dUmb?.umbrales ?? [];
+  const idsBajo = useMemo(() => new Set((datos?.alertas ?? []).map((a) => a.filamentoId)), [datos]);
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return filamentos;
     return filamentos.filter((f) => [f.id, f.tipo, f.color, f.marca, f.notas].some((c) => (c ?? '').toLowerCase().includes(q)));
   }, [filamentos, busqueda]);
+
+  function refrescar() { recargar(); recargarMov(); recargarUmb(); }
+
+  async function eliminarUmbral(u: UmbralAlerta) {
+    const etiqueta = `${etiquetaVariable(u.variable)} = ${u.valor} (≤ ${u.umbralGramos} g)`;
+    if (!window.confirm(`¿Eliminar el umbral ${etiqueta}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/api/inventario/umbrales?id=${encodeURIComponent(u.id)}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando el umbral');
+      onMensaje({ tipo: 'ok', texto: 'Umbral de alerta eliminado.' });
+      recargarUmb(); recargar();
+    } catch (e) {
+      onMensaje({ tipo: 'error', texto: (e as Error).message });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -74,9 +98,10 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       <div className="card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="w-72"><BarraBusqueda valor={busqueda} onCambio={setBusqueda} placeholder="Buscar filamento…" /></div>
-          <div className="flex gap-2">
-            <BotonRecargar onClick={() => { recargar(); recargarMov(); }} cargando={cargando} />
+          <div className="flex flex-wrap gap-2">
+            <BotonRecargar onClick={refrescar} cargando={cargando} />
             <button className="btn-secondary" onClick={() => setVerMovimientos(true)}>Movimientos</button>
+            <button className="btn-secondary" onClick={() => setCrearUmbral(true)}>Crear umbral de alerta</button>
             <button className="btn-primary" onClick={() => setEditando('nuevo')}>+ Añadir filamento</button>
           </div>
         </div>
@@ -91,7 +116,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtrados.map((f) => {
-                const bajo = f.umbralAlerta > 0 && f.gramosRestantes <= f.umbralAlerta;
+                const bajo = idsBajo.has(f.id);
                 return (
                   <tr key={f.id}>
                     <td className="td font-mono text-xs">{f.id}</td>
@@ -123,11 +148,51 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
         </div>
       </div>
 
+      {/* Umbrales de alerta de stock */}
+      <div className="card">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Umbrales de alerta de stock</h2>
+            <p className="text-xs text-slate-500">Un rollo se marca como “Stock bajo” cuando su color/marca/tipo coincide con una regla y su gramaje cae por debajo del umbral.</p>
+          </div>
+          <button className="btn-secondary" onClick={() => setCrearUmbral(true)}>Crear umbral de alerta</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-b border-slate-200">
+              <tr><th className="th">Variable</th><th className="th">Valor</th><th className="th">Umbral (g)</th><th className="th"></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {umbrales.map((u) => (
+                <tr key={u.id}>
+                  <td className="td">{etiquetaVariable(u.variable)}</td>
+                  <td className="td font-medium">{u.valor}</td>
+                  <td className="td">{u.umbralGramos} g</td>
+                  <td className="td text-right">
+                    <button className="btn-secondary !px-2 !py-1 text-xs !text-rose-600" onClick={() => eliminarUmbral(u)}>Eliminar</button>
+                  </td>
+                </tr>
+              ))}
+              {umbrales.length === 0 && <tr><td colSpan={4} className="td py-8 text-center text-slate-500">Sin umbrales definidos.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {editando && (
         <ModalFilamento
           filamento={editando === 'nuevo' ? null : editando}
+          filamentos={filamentos}
           onCerrar={() => setEditando(null)}
-          onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargar(); recargarMov(); }}
+          onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); refrescar(); }}
+        />
+      )}
+
+      {crearUmbral && (
+        <ModalUmbral
+          filamentos={filamentos}
+          onCerrar={() => setCrearUmbral(false)}
+          onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargarUmb(); recargar(); }}
         />
       )}
 
@@ -157,28 +222,35 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 }
 
 function ModalFilamento({
-  filamento, onCerrar, onGuardado,
-}: { filamento: Filamento | null; onCerrar: () => void; onGuardado: (texto: string) => void }) {
+  filamento, filamentos, onCerrar, onGuardado,
+}: { filamento: Filamento | null; filamentos: Filamento[]; onCerrar: () => void; onGuardado: (texto: string) => void }) {
   const esNuevo = !filamento;
   const [f, setF] = useState({
-    tipo: filamento?.tipo ?? 'PLA',
+    tipo: filamento?.tipo ?? '',
     color: filamento?.color ?? '',
     marca: filamento?.marca ?? '',
     rollos: filamento?.rollos ?? 1,
     comenzado: filamento?.comenzado ?? false,
     gramosRestantes: filamento?.gramosRestantes ?? 1000,
-    umbralAlerta: filamento?.umbralAlerta ?? 200,
     notas: filamento?.notas ?? '',
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [confirmacion, setConfirmacion] = useState<Filamento | null>(null);
 
-  async function guardar() {
+  // Sugerencias (no restringen la escritura): valores ya presentes en el inventario.
+  const distintos = (sel: (x: Filamento) => string, base: string[] = []) =>
+    Array.from(new Set([...base, ...filamentos.map((x) => (sel(x) ?? '').trim())].filter(Boolean)));
+  const tiposSugeridos = distintos((x) => String(x.tipo), TIPOS);
+  const coloresSugeridos = distintos((x) => x.color);
+  const marcasSugeridas = distintos((x) => x.marca);
+
+  async function enviar(opts: { forzarNuevo?: boolean; fusionarCon?: string } = {}) {
     setGuardando(true);
     setError('');
     try {
       const payload = esNuevo
-        ? { ...f, fechaRegistro: new Date().toISOString().slice(0, 10) }
+        ? { ...f, umbralAlerta: 0, fechaRegistro: new Date().toISOString().slice(0, 10), ...opts }
         : { ...filamento!, ...f };
       const res = await fetch('/api/inventario/filamentos', {
         method: esNuevo ? 'POST' : 'PATCH',
@@ -187,13 +259,44 @@ function ModalFilamento({
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error guardando');
-      onGuardado(esNuevo ? `Filamento ${body.filamento.id} añadido al inventario.` : `Filamento ${filamento!.id} actualizado.`);
+      if (body.requiereConfirmacion) { setConfirmacion(body.candidato as Filamento); return; }
+      let msg: string;
+      if (!esNuevo) msg = `Filamento ${filamento!.id} actualizado.`;
+      else if (body.fusionado) {
+        const c = body.filamento as Filamento;
+        msg = `Se sumó al filamento existente ${c.id} (${c.tipo} ${c.color}${c.marca ? ' ' + c.marca : ''}).`;
+      } else msg = `Filamento ${body.filamento.id} añadido al inventario.`;
+      onGuardado(msg);
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setGuardando(false);
     }
+  }
+
+  // Sub-vista: el ingreso se parece (con tolerancia) a un filamento existente
+  if (confirmacion) {
+    const c = confirmacion;
+    return (
+      <Modal abierto onCerrar={onCerrar} titulo="¿Es el mismo filamento?">
+        <div className="space-y-4">
+          {error && <Aviso tipo="error">{error}</Aviso>}
+          <Aviso tipo="info">
+            El filamento que intenta añadir (<b>{f.tipo} {f.color}{f.marca ? ` ${f.marca}` : ''}</b>) se parece a uno ya
+            registrado: <b>{c.id} — {c.tipo} {c.color}{c.marca ? ` ${c.marca}` : ''}</b>. ¿Desea sumarlo a ese filamento
+            o crear uno nuevo?
+          </Aviso>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button className="btn-secondary" onClick={() => setConfirmacion(null)} disabled={guardando}>Volver</button>
+            <button className="btn-secondary" onClick={() => enviar({ forzarNuevo: true })} disabled={guardando}>Crear nuevo</button>
+            <button className="btn-primary" onClick={() => enviar({ fusionarCon: c.id })} disabled={guardando}>
+              {guardando ? 'Guardando…' : `Sumar a ${c.id}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -203,17 +306,21 @@ function ModalFilamento({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Tipo de material *</label>
-            <select className="input" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
-              {TIPOS.map((t) => <option key={t}>{t}</option>)}
-            </select>
+            <input className="input" list="fil-tipos" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}
+              placeholder="Escriba un tipo (o elija uno existente)" />
+            <datalist id="fil-tipos">{tiposSugeridos.map((t) => <option key={t} value={t} />)}</datalist>
           </div>
           <div>
             <label className="label">Color *</label>
-            <input className="input" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} />
+            <input className="input" list="fil-colores" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })}
+              placeholder="Escriba un color (o elija uno existente)" />
+            <datalist id="fil-colores">{coloresSugeridos.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div>
-            <label className="label">Marca</label>
-            <input className="input" value={f.marca} onChange={(e) => setF({ ...f, marca: e.target.value })} />
+            <label className="label">Marca *</label>
+            <input className="input" list="fil-marcas" value={f.marca} onChange={(e) => setF({ ...f, marca: e.target.value })}
+              placeholder="Escriba una marca (o elija una existente)" />
+            <datalist id="fil-marcas">{marcasSugeridas.map((m) => <option key={m} value={m} />)}</datalist>
           </div>
           <div>
             <label className="label">Número de rollos</label>
@@ -229,10 +336,6 @@ function ModalFilamento({
               <input type="number" min="0" className="input" value={f.gramosRestantes} onChange={(e) => setF({ ...f, gramosRestantes: parseFloat(e.target.value) || 0 })} />
             </div>
           )}
-          <div>
-            <label className="label">Umbral de alerta (g)</label>
-            <input type="number" min="0" className="input" value={f.umbralAlerta} onChange={(e) => setF({ ...f, umbralAlerta: parseFloat(e.target.value) || 0 })} />
-          </div>
           <div className="col-span-2">
             <label className="label">Notas</label>
             <input className="input" value={f.notas} onChange={(e) => setF({ ...f, notas: e.target.value })} />
@@ -240,7 +343,92 @@ function ModalFilamento({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={guardar} disabled={guardando || !f.color.trim()}>
+          <button className="btn-primary" onClick={() => enviar()} disabled={guardando || !f.tipo.trim() || !f.color.trim() || !f.marca.trim()}>
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ModalUmbral({
+  filamentos, onCerrar, onGuardado,
+}: { filamentos: Filamento[]; onCerrar: () => void; onGuardado: (texto: string) => void }) {
+  const [variable, setVariable] = useState<VariableUmbral>('tipo');
+  const [valor, setValor] = useState('');
+  const [umbralGramos, setUmbralGramos] = useState(200);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Valores ya presentes en el inventario: solo sirven como SUGERENCIAS; el
+  // usuario puede escribir uno nuevo (color/marca/tipo aún no registrado).
+  const opcionesDe = (v: VariableUmbral): string[] =>
+    Array.from(new Set([
+      ...(v === 'tipo' ? TIPOS : []),
+      ...filamentos.map((f) => (v === 'color' ? f.color : v === 'marca' ? f.marca : f.tipo) ?? '').map((s) => String(s).trim()),
+    ].filter(Boolean)));
+  const opciones = opcionesDe(variable);
+
+  function cambiarVariable(v: VariableUmbral) {
+    setVariable(v);
+    setValor('');
+  }
+
+  async function guardar() {
+    setGuardando(true);
+    setError('');
+    try {
+      const res = await fetch('/api/inventario/umbrales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variable, valor, umbralGramos }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error creando el umbral');
+      onGuardado(`Umbral de alerta creado para ${etiquetaVariable(variable)} = ${valor} (≤ ${umbralGramos} g).`);
+      onCerrar();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal abierto onCerrar={onCerrar} titulo="Crear umbral de alerta">
+      <div className="space-y-4">
+        {error && <Aviso tipo="error">{error}</Aviso>}
+        <div>
+          <label className="label">¿Por cuál variable desea crear el nuevo umbral de alerta? *</label>
+          <select className="input" value={variable} onChange={(e) => cambiarVariable(e.target.value as VariableUmbral)}>
+            <option value="color">Por color</option>
+            <option value="marca">Por marca</option>
+            <option value="tipo">Por tipo de material</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Valor ({etiquetaVariable(variable).toLowerCase()}) *</label>
+          <input
+            className="input"
+            list="umbral-valores"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            placeholder="Escriba un valor (o elija uno existente)"
+          />
+          <datalist id="umbral-valores">
+            {opciones.map((o) => <option key={o} value={o} />)}
+          </datalist>
+          <p className="mt-1 text-xs text-slate-500">Puede escribir un color/marca/tipo nuevo; las coincidencias ignoran mayúsculas y acentos.</p>
+        </div>
+        <div>
+          <label className="label">Umbral de riesgo (g) *</label>
+          <input type="number" min="1" className="input" value={umbralGramos}
+            onChange={(e) => setUmbralGramos(parseFloat(e.target.value) || 0)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button className="btn-primary" onClick={guardar} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
         </div>

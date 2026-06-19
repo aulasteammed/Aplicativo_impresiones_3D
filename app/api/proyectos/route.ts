@@ -14,11 +14,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { nombre, impresora, items } = (await req.json()) as {
-      nombre: string; impresora: string; items: ItemProyecto[];
+    const { codigo, impresora, items } = (await req.json()) as {
+      codigo: string; impresora: string; items: ItemProyecto[];
     };
-    if (!nombre?.trim() || !impresora?.trim() || !items?.length) {
-      return NextResponse.json({ error: 'Nombre, impresora y al menos una solicitud son obligatorios' }, { status: 400 });
+    if (!codigo?.trim() || !impresora?.trim() || !items?.length) {
+      return NextResponse.json({ error: 'Código, impresora y al menos una solicitud son obligatorios' }, { status: 400 });
     }
     for (const it of items) {
       if (!it.solicitudId || !it.material || !(it.gramos > 0) || !(it.tiempoHoras > 0)) {
@@ -28,8 +28,8 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-    const codigo = await crearProyecto(nombre.trim(), impresora.trim(), items);
-    return NextResponse.json({ ok: true, codigo });
+    const codigoCreado = await crearProyecto(codigo.trim(), impresora.trim(), items);
+    return NextResponse.json({ ok: true, codigo: codigoCreado });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

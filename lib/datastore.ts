@@ -8,9 +8,9 @@ import * as demo from './demo';
 import {
   Solicitud, Proyecto, RegistroHistorial, EstadoSolicitud, EstadoProyecto,
   Filamento, MovimientoInventario, Impresora, Mantenimiento,
-  ItemProyecto, DashboardData, AlertaStock, ResultadoImpresion,
+  ItemProyecto, DashboardData, AlertaStock, ResultadoImpresion, UmbralAlerta,
 } from './types';
-import { num, parsearHoras, hoyISO } from './util';
+import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein } from './util';
 import { agruparProyectos } from './google/sheets';
 
 function backend() {
@@ -38,9 +38,9 @@ export async function getProyectos(): Promise<Proyecto[]> {
   return agruparProyectos(await backend().getHistorial());
 }
 
-export async function crearProyecto(nombre: string, impresora: string, items: ItemProyecto[]): Promise<string> {
+export async function crearProyecto(codigo: string, impresora: string, items: ItemProyecto[]): Promise<string> {
   const solicitudes = await backend().getSolicitudes();
-  return backend().crearProyecto(nombre, impresora, items, solicitudes);
+  return backend().crearProyecto(codigo, impresora, items, solicitudes);
 }
 
 export async function agregarItemsProyecto(codigo: string, items: ItemProyecto[]): Promise<void> {
@@ -134,9 +134,75 @@ export async function getFilamentos(): Promise<Filamento[]> {
   return backend().getFilamentos();
 }
 
-export async function crearFilamento(fil: Omit<Filamento, 'id'>): Promise<Filamento> {
+export interface ResultadoCrearFilamento {
+  tipo: 'creado' | 'fusionado' | 'sugerencia';
+  filamento?: Filamento;
+  candidato?: Filamento;
+}
+
+/** Fusiona un ingreso de filamento dentro de un rollo existente: suma rollos y
+ *  gramos, registra el movimiento de compra y conserva la identidad existente. */
+async function fusionarFilamento(objetivo: Filamento, ingreso: Omit<Filamento, 'id'>): Promise<Filamento> {
+  const b = backend();
+  const fusionado: Filamento = {
+    ...objetivo,
+    rollos: objetivo.rollos + (Number(ingreso.rollos) || 0),
+    gramosRestantes: objetivo.gramosRestantes + (Number(ingreso.gramosRestantes) || 0),
+    comenzado: objetivo.comenzado || ingreso.comenzado,
+  };
+  await b.guardarFilamento(fusionado, false);
+  if ((Number(ingreso.gramosRestantes) || 0) > 0) {
+    await b.registrarMovimiento({
+      fecha: hoyISO(), filamentoId: fusionado.id, proyectoCodigo: '', gramos: ingreso.gramosRestantes, motivo: 'compra',
+    });
+  }
+  return fusionado;
+}
+
+/** Añade un filamento al inventario. Si (tipo, color, marca) coincide EXACTO
+ *  (normalizando mayúsculas/acentos/espacios) con uno existente, fusiona; si la
+ *  coincidencia es solo aproximada (typo), devuelve una sugerencia para que el
+ *  usuario confirme; si no hay coincidencia, crea uno nuevo. */
+export async function crearFilamento(
+  fil: Omit<Filamento, 'id'>,
+  opts: { forzarNuevo?: boolean; fusionarCon?: string } = {},
+): Promise<ResultadoCrearFilamento> {
   const b = backend();
   const existentes = await b.getFilamentos();
+
+  // Fusión confirmada por el usuario hacia un id concreto
+  if (opts.fusionarCon) {
+    const objetivo = existentes.find((f) => f.id === opts.fusionarCon);
+    if (objetivo) return { tipo: 'fusionado', filamento: await fusionarFilamento(objetivo, fil) };
+    // si el id ya no existe, continúa y crea uno nuevo
+  }
+
+  if (!opts.forzarNuevo && !opts.fusionarCon) {
+    // 1) Coincidencia EXACTA normalizada (tipo+color+marca) → fusiona automáticamente
+    const exacto = existentes.find((f) =>
+      normalizarTexto(f.tipo) === normalizarTexto(fil.tipo)
+      && normalizarTexto(f.color) === normalizarTexto(fil.color)
+      && normalizarTexto(f.marca) === normalizarTexto(fil.marca));
+    if (exacto) return { tipo: 'fusionado', filamento: await fusionarFilamento(exacto, fil) };
+
+    // 2) Coincidencia APROXIMADA en las 3 características (tolera typos/transposiciones,
+    //    incl. en el tipo, p. ej. "pteg"→"PETG") → sugiere confirmar
+    const aproximados = existentes
+      .filter((f) =>
+        coincideAprox(f.tipo, fil.tipo)
+        && coincideAprox(f.color, fil.color)
+        && coincideAprox(f.marca, fil.marca))
+      .map((f) => ({
+        f,
+        dist: distanciaLevenshtein(normalizarTexto(f.tipo), normalizarTexto(fil.tipo))
+            + distanciaLevenshtein(normalizarTexto(f.color), normalizarTexto(fil.color))
+            + distanciaLevenshtein(normalizarTexto(f.marca), normalizarTexto(fil.marca)),
+      }))
+      .sort((a, z) => a.dist - z.dist);
+    if (aproximados.length > 0) return { tipo: 'sugerencia', candidato: aproximados[0].f };
+  }
+
+  // 3) Crear nuevo
   let max = 0;
   for (const f of existentes) {
     const n = parseInt(f.id.replace('FIL-', ''), 10);
@@ -149,7 +215,7 @@ export async function crearFilamento(fil: Omit<Filamento, 'id'>): Promise<Filame
       fecha: hoyISO(), filamentoId: nuevo.id, proyectoCodigo: '', gramos: nuevo.gramosRestantes, motivo: 'compra',
     });
   }
-  return nuevo;
+  return { tipo: 'creado', filamento: nuevo };
 }
 
 export async function actualizarFilamento(fil: Filamento): Promise<void> {
@@ -197,24 +263,62 @@ export async function crearMantenimiento(m: Mantenimiento): Promise<void> {
   await backend().registrarMantenimiento(m);
 }
 
-/** Alertas de stock bajo: agregado por tipo+color contra el umbral por rollo */
-export function calcularAlertas(filamentos: Filamento[]): AlertaStock[] {
-  return filamentos
-    .filter((f) => f.umbralAlerta > 0 && f.gramosRestantes <= f.umbralAlerta)
-    .map((f) => ({
-      tipo: f.tipo, color: f.color, filamentoId: f.id,
-      gramosRestantes: f.gramosRestantes, umbral: f.umbralAlerta,
-    }));
+/** Valor del filamento para la variable de una regla de umbral */
+function valorParaVariable(f: Filamento, variable: UmbralAlerta['variable']): string {
+  if (variable === 'color') return f.color;
+  if (variable === 'marca') return f.marca;
+  return String(f.tipo);
+}
+
+/** Alertas de stock bajo según las reglas de umbral (por color/marca/tipo).
+ *  Un rollo alerta cuando coincide con alguna regla y su stock cae por debajo
+ *  del umbral; si rompe varias reglas, se reporta el umbral mayor. */
+export function calcularAlertas(filamentos: Filamento[], umbrales: UmbralAlerta[]): AlertaStock[] {
+  const alertas: AlertaStock[] = [];
+  for (const f of filamentos) {
+    const rotas = umbrales.filter(
+      (u) => normalizarTexto(valorParaVariable(f, u.variable)) === normalizarTexto(u.valor)
+        && f.gramosRestantes <= u.umbralGramos,
+    );
+    if (rotas.length === 0) continue;
+    const umbral = Math.max(...rotas.map((u) => u.umbralGramos));
+    alertas.push({ tipo: f.tipo, color: f.color, filamentoId: f.id, gramosRestantes: f.gramosRestantes, umbral });
+  }
+  return alertas;
+}
+
+// --- Umbrales de alerta ------------------------------------------------------
+
+export async function getUmbrales(): Promise<UmbralAlerta[]> {
+  return backend().getUmbrales();
+}
+
+export async function crearUmbral(u: Omit<UmbralAlerta, 'id'>): Promise<UmbralAlerta> {
+  const b = backend();
+  const existentes = await b.getUmbrales();
+  let max = 0;
+  for (const x of existentes) {
+    const n = parseInt(x.id.replace('UMB-', ''), 10);
+    if (!isNaN(n) && n > max) max = n;
+  }
+  const nuevo: UmbralAlerta = { ...u, id: `UMB-${String(max + 1).padStart(3, '0')}` };
+  await b.crearUmbral(nuevo);
+  return nuevo;
+}
+
+export async function eliminarUmbral(id: string): Promise<void> {
+  await backend().eliminarUmbral(id);
 }
 
 // --- Dashboard ---------------------------------------------------------------
 
 export async function getDashboard(): Promise<DashboardData> {
-  const [solicitudes, historial, filamentos, movimientos] = await Promise.all([
+  const [solicitudes, historial, filamentos, movimientos, umbrales] = await Promise.all([
     backend().getSolicitudes(),
     backend().getHistorial(),
     backend().getFilamentos(),
     backend().getMovimientos(),
+    backend().getUmbrales(),
   ]);
   const proyectos = agruparProyectos(historial);
 
@@ -248,7 +352,7 @@ export async function getDashboard(): Promise<DashboardData> {
     tiempoPorImpresora: Array.from(tiempoPorImpresoraMap.entries()).map(([impresora, horas]) => ({
       impresora, horas: Math.round(horas * 10) / 10,
     })),
-    alertasStock: calcularAlertas(filamentos),
+    alertasStock: calcularAlertas(filamentos, umbrales),
     proximasEntregas: pendientes.slice(-8).reverse().map((s) => ({
       nombre: s.nombre, pieza: s.descripcionPieza.slice(0, 80), fecha: s.fechaTentativa, estado: s.estado,
     })),
