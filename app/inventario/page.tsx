@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
+import { normalizarTexto, calcularAlertasAgregadas } from '@/lib/util';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
 
@@ -51,6 +52,15 @@ function etiquetaVariable(v: VariableUmbral): string {
   return v === 'color' ? 'Color' : v === 'marca' ? 'Marca' : 'Tipo de material';
 }
 
+/** Reglas de umbral que un filamento "rompe" (mismo criterio que el servidor):
+ *  coincide el valor (normalizado) en su variable y el stock está por debajo. */
+function reglasRotas(f: Filamento, umbrales: UmbralAlerta[]): UmbralAlerta[] {
+  return umbrales.filter((u) => {
+    const valor = u.variable === 'color' ? f.color : u.variable === 'marca' ? f.marca : f.tipo;
+    return normalizarTexto(String(valor)) === normalizarTexto(u.valor) && f.gramosRestantes <= u.umbralGramos;
+  });
+}
+
 function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; texto: string }) => void }) {
   const { datos, cargando, error, recargar } = useDatos<{ filamentos: Filamento[]; alertas: AlertaStock[] }>('/api/inventario/filamentos');
   const { datos: dMov, recargar: recargarMov } = useDatos<{ movimientos: MovimientoInventario[] }>('/api/inventario/movimientos');
@@ -63,6 +73,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
   const filamentos = datos?.filamentos ?? [];
   const umbrales = dUmb?.umbrales ?? [];
   const idsBajo = useMemo(() => new Set((datos?.alertas ?? []).map((a) => a.filamentoId)), [datos]);
+  const alertasUmbral = useMemo(() => calcularAlertasAgregadas(filamentos, umbrales), [filamentos, umbrales]);
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return filamentos;
@@ -85,6 +96,20 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
     }
   }
 
+  async function eliminarFilamento(f: Filamento) {
+    const etiqueta = `${f.id} (${f.tipo} ${f.color}${f.marca ? ` ${f.marca}` : ''})`;
+    if (!window.confirm(`¿Eliminar el filamento ${etiqueta}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/api/inventario/filamentos?id=${encodeURIComponent(f.id)}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando el filamento');
+      onMensaje({ tipo: 'ok', texto: `Filamento ${f.id} eliminado.` });
+      refrescar();
+    } catch (e) {
+      onMensaje({ tipo: 'error', texto: (e as Error).message });
+    }
+  }
+
   return (
     <div className="space-y-4">
       {error && <Aviso tipo="error">Error: {error}</Aviso>}
@@ -101,7 +126,6 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
           <div className="flex flex-wrap gap-2">
             <BotonRecargar onClick={refrescar} cargando={cargando} />
             <button className="btn-secondary" onClick={() => setVerMovimientos(true)}>Movimientos</button>
-            <button className="btn-secondary" onClick={() => setCrearUmbral(true)}>Crear umbral de alerta</button>
             <button className="btn-primary" onClick={() => setEditando('nuevo')}>+ Añadir filamento</button>
           </div>
         </div>
@@ -117,6 +141,12 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             <tbody className="divide-y divide-slate-100">
               {filtrados.map((f) => {
                 const bajo = idsBajo.has(f.id);
+                const rotas = bajo ? reglasRotas(f, umbrales) : [];
+                const tooltipBajo = rotas.length > 0
+                  ? 'Stock bajo por:\n' + rotas.map((u) =>
+                      `• Por ${etiquetaVariable(u.variable).toLowerCase()} "${u.valor}": ${Math.round(f.gramosRestantes)} g ≤ ${u.umbralGramos} g (${Math.max(0, Math.round(u.umbralGramos - f.gramosRestantes))} g por debajo)`,
+                    ).join('\n')
+                  : '';
                 return (
                   <tr key={f.id}>
                     <td className="td font-mono text-xs">{f.id}</td>
@@ -134,11 +164,19 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                       </div>
                     </td>
                     <td className="td">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${bajo ? 'bg-rose-100 text-rose-700 ring-rose-200' : 'bg-emerald-100 text-emerald-700 ring-emerald-200'}`}>
+                      <span
+                        title={tooltipBajo || undefined}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${bajo ? 'cursor-help bg-rose-100 text-rose-700 ring-rose-200 underline decoration-dotted underline-offset-2' : 'bg-emerald-100 text-emerald-700 ring-emerald-200'}`}
+                      >
                         {bajo ? 'Stock bajo' : 'OK'}
                       </span>
                     </td>
-                    <td className="td"><button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setEditando(f)}>Editar</button></td>
+                    <td className="td">
+                      <div className="flex gap-1.5">
+                        <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setEditando(f)}>Editar</button>
+                        <button className="btn-secondary !px-2 !py-1 text-xs !text-rose-600" onClick={() => eliminarFilamento(f)}>Eliminar</button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -174,6 +212,43 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                 </tr>
               ))}
               {umbrales.length === 0 && <tr><td colSpan={4} className="td py-8 text-center text-slate-500">Sin umbrales definidos.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Alertas de stock agregadas por umbral */}
+      <div className="card">
+        <div className="mb-4">
+          <h2 className="font-semibold">Alertas de stock</h2>
+          <p className="text-xs text-slate-500">Suma el total de filamento del inventario que coincide con cada umbral (sin importar las otras características) y avisa si está por debajo o muy cerca del límite.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-b border-slate-200">
+              <tr><th className="th">Variable</th><th className="th">Valor</th><th className="th">Total en inventario</th><th className="th">Umbral</th><th className="th">Alerta</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {alertasUmbral.map((a) => (
+                <tr key={`${a.variable}-${a.valor}`}>
+                  <td className="td">{etiquetaVariable(a.variable)}</td>
+                  <td className="td font-medium">{a.valor}</td>
+                  <td className="td">{Math.round(a.total)} g <span className="text-xs text-slate-400">({a.rollos} rollo{a.rollos === 1 ? '' : 's'})</span></td>
+                  <td className="td">{a.umbralGramos} g</td>
+                  <td className="td">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${a.estado === 'debajo' ? 'bg-rose-100 text-rose-700 ring-rose-200' : 'bg-amber-100 text-amber-700 ring-amber-200'}`}>
+                      {a.estado === 'debajo'
+                        ? `⚠ Por debajo del umbral (faltan ${Math.max(0, Math.round(a.umbralGramos - a.total))} g)`
+                        : `Cerca del umbral (solo ${Math.round(a.total - a.umbralGramos)} g de margen)`}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {alertasUmbral.length === 0 && (
+                <tr><td colSpan={5} className="td py-8 text-center text-slate-500">
+                  {umbrales.length === 0 ? 'Defina umbrales de alerta para ver alertas de stock aquí.' : 'Sin alertas: el stock total de cada umbral está por encima del límite.'}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -231,7 +306,9 @@ function ModalFilamento({
     marca: filamento?.marca ?? '',
     rollos: filamento?.rollos ?? 1,
     comenzado: filamento?.comenzado ?? false,
-    gramosRestantes: filamento?.gramosRestantes ?? 1000,
+    // Para un filamento NUEVO este campo es "gramos de los rollos comenzados"
+    // (parte de 0); al EDITAR es el gramaje restante real existente.
+    gramosRestantes: filamento?.gramosRestantes ?? 0,
     notas: filamento?.notas ?? '',
   });
   const [guardando, setGuardando] = useState(false);
@@ -244,6 +321,10 @@ function ModalFilamento({
   const tiposSugeridos = distintos((x) => String(x.tipo), TIPOS);
   const coloresSugeridos = distintos((x) => x.color);
   const marcasSugeridas = distintos((x) => x.marca);
+
+  // Total que se añadirá al inventario al crear: rollos nuevos × 1000 g + los
+  // gramos de los rollos comenzados (si se marcó la casilla).
+  const totalNuevo = (Number(f.rollos) || 0) * 1000 + (f.comenzado ? (Number(f.gramosRestantes) || 0) : 0);
 
   async function enviar(opts: { forzarNuevo?: boolean; fusionarCon?: string } = {}) {
     setGuardando(true);
@@ -323,17 +404,23 @@ function ModalFilamento({
             <datalist id="fil-marcas">{marcasSugeridas.map((m) => <option key={m} value={m} />)}</datalist>
           </div>
           <div>
-            <label className="label">Número de rollos</label>
-            <input type="number" min="1" className="input" value={f.rollos} onChange={(e) => setF({ ...f, rollos: parseInt(e.target.value) || 1 })} />
+            <label className="label">Número de rollos {esNuevo && <span className="text-xs text-slate-400">(nuevos · 1 kg c/u)</span>}</label>
+            <input type="number" min="0" className="input" value={f.rollos} onChange={(e) => setF({ ...f, rollos: parseInt(e.target.value) || 0 })} />
           </div>
           <div className="col-span-2 flex items-center gap-2 rounded-lg bg-slate-50 p-3">
             <input id="comenzado" type="checkbox" className="accent-steam-600" checked={f.comenzado} onChange={(e) => setF({ ...f, comenzado: e.target.checked })} />
-            <label htmlFor="comenzado" className="text-sm">¿Rollo comenzado? {esNuevo && <span className="text-xs text-slate-500">(si está nuevo se registra 1 kg por rollo)</span>}</label>
+            <label htmlFor="comenzado" className="text-sm">¿Rollo(s) comenzado(s)? {esNuevo && <span className="text-xs text-slate-500">(sus gramos se suman, además de los rollos nuevos × 1 kg)</span>}</label>
           </div>
           {(f.comenzado || !esNuevo) && (
             <div>
-              <label className="label">Gramos restantes (aprox.)</label>
+              <label className="label">{esNuevo ? 'Total de gramos del/los rollo(s) comenzado(s)' : 'Gramos restantes (aprox.)'}</label>
               <input type="number" min="0" className="input" value={f.gramosRestantes} onChange={(e) => setF({ ...f, gramosRestantes: parseFloat(e.target.value) || 0 })} />
+            </div>
+          )}
+          {esNuevo && (
+            <div className="col-span-2 rounded-lg bg-steam-50/60 px-3 py-2 text-xs text-slate-600">
+              Se añadirán al inventario: <b>{totalNuevo} g</b>{' '}
+              ({Number(f.rollos) || 0} × 1000 g{f.comenzado ? ` + ${Number(f.gramosRestantes) || 0} g comenzados` : ''}).
             </div>
           )}
           <div className="col-span-2">
@@ -343,7 +430,7 @@ function ModalFilamento({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={() => enviar()} disabled={guardando || !f.tipo.trim() || !f.color.trim() || !f.marca.trim()}>
+          <button className="btn-primary" onClick={() => enviar()} disabled={guardando || !f.tipo.trim() || !f.color.trim() || !f.marca.trim() || (esNuevo && totalNuevo <= 0)}>
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
@@ -360,6 +447,7 @@ function ModalUmbral({
   const [umbralGramos, setUmbralGramos] = useState(200);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [confirmacion, setConfirmacion] = useState<UmbralAlerta | null>(null);
 
   // Valores ya presentes en el inventario: solo sirven como SUGERENCIAS; el
   // usuario puede escribir uno nuevo (color/marca/tipo aún no registrado).
@@ -375,24 +463,51 @@ function ModalUmbral({
     setValor('');
   }
 
-  async function guardar() {
+  async function guardar(opts: { forzarNuevo?: boolean; actualizarId?: string } = {}) {
     setGuardando(true);
     setError('');
     try {
       const res = await fetch('/api/inventario/umbrales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variable, valor, umbralGramos }),
+        body: JSON.stringify({ variable, valor, umbralGramos, ...opts }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error creando el umbral');
-      onGuardado(`Umbral de alerta creado para ${etiquetaVariable(variable)} = ${valor} (≤ ${umbralGramos} g).`);
+      if (body.requiereConfirmacion) { setConfirmacion(body.candidato as UmbralAlerta); return; }
+      onGuardado(body.actualizado
+        ? `Umbral de ${etiquetaVariable(variable)} = ${body.umbral.valor} actualizado a ≤ ${umbralGramos} g.`
+        : `Umbral de alerta creado para ${etiquetaVariable(variable)} = ${valor} (≤ ${umbralGramos} g).`);
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setGuardando(false);
     }
+  }
+
+  // Sub-vista: el valor se parece (con tolerancia) a un umbral ya existente
+  if (confirmacion) {
+    const c = confirmacion;
+    return (
+      <Modal abierto onCerrar={onCerrar} titulo="¿Es el mismo umbral?">
+        <div className="space-y-4">
+          {error && <Aviso tipo="error">{error}</Aviso>}
+          <Aviso tipo="info">
+            Ya existe un umbral parecido: <b>{etiquetaVariable(c.variable)} = {c.valor}</b> (≤ {c.umbralGramos} g).
+            El valor que escribiste fue <b>{valor}</b>. ¿Quieres actualizar ese umbral a <b>≤ {umbralGramos} g</b> o
+            crear uno nuevo?
+          </Aviso>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button className="btn-secondary" onClick={() => setConfirmacion(null)} disabled={guardando}>Volver</button>
+            <button className="btn-secondary" onClick={() => guardar({ forzarNuevo: true })} disabled={guardando}>Crear de todos modos</button>
+            <button className="btn-primary" onClick={() => guardar({ actualizarId: c.id })} disabled={guardando}>
+              {guardando ? 'Guardando…' : `Actualizar a ≤ ${umbralGramos} g`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -428,7 +543,7 @@ function ModalUmbral({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={guardar} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
+          <button className="btn-primary" onClick={() => guardar()} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
         </div>

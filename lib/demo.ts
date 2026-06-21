@@ -247,6 +247,13 @@ export async function guardarFilamento(fil: Filamento, esNuevo: boolean): Promis
   st.filamentos[idx] = fil;
 }
 
+export async function eliminarFilamento(id: string): Promise<void> {
+  const st = store();
+  const idx = st.filamentos.findIndex((f) => f.id === id);
+  if (idx === -1) throw new Error(`Filamento ${id} no encontrado`);
+  st.filamentos.splice(idx, 1);
+}
+
 export async function getMovimientos(): Promise<MovimientoInventario[]> {
   return [...store().movimientos].reverse();
 }
@@ -284,6 +291,13 @@ export async function getUmbrales(): Promise<UmbralAlerta[]> {
 
 export async function crearUmbral(u: UmbralAlerta): Promise<void> {
   store().umbrales.push(u);
+}
+
+export async function actualizarUmbral(u: UmbralAlerta): Promise<void> {
+  const st = store();
+  const idx = st.umbrales.findIndex((x) => x.id === u.id);
+  if (idx === -1) throw new Error(`Umbral ${u.id} no encontrado`);
+  st.umbrales[idx] = u;
 }
 
 export async function eliminarUmbral(id: string): Promise<void> {

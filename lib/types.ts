@@ -137,6 +137,17 @@ export interface UmbralAlerta {
   umbralGramos: number;
 }
 
+/** Alerta AGREGADA por regla: total de filamento del inventario que coincide con
+ *  la regla (sin importar las otras características) frente a su umbral. */
+export interface AlertaUmbral {
+  variable: VariableUmbral;
+  valor: string;
+  total: number;       // gramos totales en inventario que coinciden con la regla
+  umbralGramos: number;
+  rollos: number;      // cuántos filamentos contribuyen
+  estado: 'debajo' | 'cerca';
+}
+
 export interface DashboardData {
   solicitudesNuevas: number;
   solicitudesTotal: number;
@@ -147,7 +158,7 @@ export interface DashboardData {
   desperdicioTotal: number;
   materialConsumidoMes: number;
   tiempoPorImpresora: { impresora: string; horas: number }[];
-  alertasStock: AlertaStock[];
+  alertasUmbral: AlertaUmbral[];
   proximasEntregas: { nombre: string; pieza: string; fecha: string; estado: string }[];
   esDemo: boolean;
 }

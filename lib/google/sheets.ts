@@ -356,6 +356,22 @@ export async function guardarFilamento(fil: Filamento, esNuevo: boolean): Promis
   await escribirRango(config.sheetInventarioId, `'Filamentos'!A${idx + 2}:J${idx + 2}`, [valores]);
 }
 
+export async function eliminarFilamento(id: string): Promise<void> {
+  await asegurarInventario();
+  const filas = await leerRango(config.sheetInventarioId, `'Filamentos'!A2:A`);
+  const idx = filas.findIndex((f) => f[0] === id);
+  if (idx === -1) throw new Error(`Filamento ${id} no encontrado`);
+  const sheetId = await sheetIdPorTitulo('Filamentos');
+  await cliente().spreadsheets.batchUpdate({
+    spreadsheetId: config.sheetInventarioId,
+    requestBody: {
+      requests: [{
+        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } },
+      }],
+    },
+  });
+}
+
 export async function getMovimientos(): Promise<MovimientoInventario[]> {
   await asegurarInventario();
   const filas = await leerRango(config.sheetInventarioId, `'Movimientos'!A2:E`);
@@ -434,6 +450,16 @@ export async function getUmbrales(): Promise<UmbralAlerta[]> {
 export async function crearUmbral(u: UmbralAlerta): Promise<void> {
   await asegurarInventario();
   await anexarFilas(config.sheetInventarioId, `'Umbrales'!A1`, [
+    [u.id, u.variable, u.valor, u.umbralGramos],
+  ]);
+}
+
+export async function actualizarUmbral(u: UmbralAlerta): Promise<void> {
+  await asegurarInventario();
+  const filas = await leerRango(config.sheetInventarioId, `'Umbrales'!A2:A`);
+  const idx = filas.findIndex((f) => f[0] === u.id);
+  if (idx === -1) throw new Error(`Umbral ${u.id} no encontrado`);
+  await escribirRango(config.sheetInventarioId, `'Umbrales'!A${idx + 2}:D${idx + 2}`, [
     [u.id, u.variable, u.valor, u.umbralGramos],
   ]);
 }

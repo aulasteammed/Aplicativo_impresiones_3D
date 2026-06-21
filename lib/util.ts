@@ -1,4 +1,4 @@
-import { EstadoSolicitud } from './types';
+import { EstadoSolicitud, Filamento, UmbralAlerta, AlertaUmbral } from './types';
 
 /** Normaliza el estado leído del Sheets al estándar de la app.
  *  La hoja histórica usa "Aceptada"; el estándar es "Aprobada". Vacío = "Nueva". */
@@ -85,6 +85,28 @@ export function coincideAprox(a: string, b: string): boolean {
   const max = Math.max(na.length, nb.length);
   const umbral = max <= 4 ? 1 : max <= 8 ? 2 : 3;
   return distanciaLevenshtein(na, nb) <= umbral;
+}
+
+// Un total dentro de este % por encima del umbral se considera "cerca del límite".
+export const MARGEN_PROXIMIDAD_UMBRAL = 0.10;
+
+/** Alertas AGREGADAS por umbral: para cada regla suma el total de filamento del
+ *  inventario que coincide con su variable+valor (sin importar las otras dos
+ *  características) e incluye solo las que están por debajo o muy cerca del umbral. */
+export function calcularAlertasAgregadas(filamentos: Filamento[], umbrales: UmbralAlerta[]): AlertaUmbral[] {
+  const out: AlertaUmbral[] = [];
+  for (const u of umbrales) {
+    const coincidentes = filamentos.filter((f) =>
+      normalizarTexto(u.variable === 'color' ? f.color : u.variable === 'marca' ? f.marca : String(f.tipo))
+        === normalizarTexto(u.valor));
+    const total = coincidentes.reduce((acc, f) => acc + f.gramosRestantes, 0);
+    if (total <= u.umbralGramos) {
+      out.push({ variable: u.variable, valor: u.valor, total, umbralGramos: u.umbralGramos, rollos: coincidentes.length, estado: 'debajo' });
+    } else if (total <= u.umbralGramos * (1 + MARGEN_PROXIMIDAD_UMBRAL)) {
+      out.push({ variable: u.variable, valor: u.valor, total, umbralGramos: u.umbralGramos, rollos: coincidentes.length, estado: 'cerca' });
+    }
+  }
+  return out;
 }
 
 /** Genera el código de proyecto IMP-AAMMDD-NN a partir de los códigos existentes */

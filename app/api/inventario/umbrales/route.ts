@@ -16,7 +16,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const datos = (await req.json()) as Omit<UmbralAlerta, 'id'>;
+    const { forzarNuevo, actualizarId, ...datos } = (await req.json()) as
+      Omit<UmbralAlerta, 'id'> & { forzarNuevo?: boolean; actualizarId?: string };
     if (!VARIABLES.includes(datos.variable)) {
       return NextResponse.json({ error: 'Variable inválida (use color, marca o tipo)' }, { status: 400 });
     }
@@ -28,8 +29,11 @@ export async function POST(req: NextRequest) {
     if (!(umbralGramos > 0)) {
       return NextResponse.json({ error: 'El umbral en gramos debe ser mayor que 0' }, { status: 400 });
     }
-    const nuevo = await crearUmbral({ variable: datos.variable, valor, umbralGramos });
-    return NextResponse.json({ ok: true, umbral: nuevo });
+    const r = await crearUmbral({ variable: datos.variable, valor, umbralGramos }, { forzarNuevo, actualizarId });
+    if (r.tipo === 'sugerencia') {
+      return NextResponse.json({ ok: true, requiereConfirmacion: true, candidato: r.candidato });
+    }
+    return NextResponse.json({ ok: true, umbral: r.umbral, actualizado: r.tipo === 'actualizado' });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

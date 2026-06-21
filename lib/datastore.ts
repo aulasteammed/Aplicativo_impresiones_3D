@@ -10,7 +10,7 @@ import {
   Filamento, MovimientoInventario, Impresora, Mantenimiento,
   ItemProyecto, DashboardData, AlertaStock, ResultadoImpresion, UmbralAlerta,
 } from './types';
-import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein } from './util';
+import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein, calcularAlertasAgregadas } from './util';
 import { agruparProyectos } from './google/sheets';
 
 function backend() {
@@ -230,6 +230,10 @@ export async function actualizarFilamento(fil: Filamento): Promise<void> {
   }
 }
 
+export async function eliminarFilamento(id: string): Promise<void> {
+  await backend().eliminarFilamento(id);
+}
+
 export async function getMovimientos(): Promise<MovimientoInventario[]> {
   return backend().getMovimientos();
 }
@@ -293,9 +297,51 @@ export async function getUmbrales(): Promise<UmbralAlerta[]> {
   return backend().getUmbrales();
 }
 
-export async function crearUmbral(u: Omit<UmbralAlerta, 'id'>): Promise<UmbralAlerta> {
+export interface ResultadoCrearUmbral {
+  tipo: 'creado' | 'actualizado' | 'sugerencia';
+  umbral?: UmbralAlerta;
+  candidato?: UmbralAlerta;
+}
+
+/** Crea un umbral evitando reglas repetidas para la misma variable: si el valor
+ *  coincide EXACTO (normalizado) con uno existente, actualiza su gramaje; si la
+ *  coincidencia es solo aproximada (typo), devuelve una sugerencia para que el
+ *  usuario confirme; si no hay coincidencia, crea uno nuevo. */
+export async function crearUmbral(
+  u: Omit<UmbralAlerta, 'id'>,
+  opts: { forzarNuevo?: boolean; actualizarId?: string } = {},
+): Promise<ResultadoCrearUmbral> {
   const b = backend();
   const existentes = await b.getUmbrales();
+
+  // Actualización confirmada por el usuario
+  if (opts.actualizarId) {
+    const obj = existentes.find((x) => x.id === opts.actualizarId);
+    if (obj) {
+      const actualizado: UmbralAlerta = { ...obj, umbralGramos: u.umbralGramos };
+      await b.actualizarUmbral(actualizado);
+      return { tipo: 'actualizado', umbral: actualizado };
+    }
+  }
+
+  if (!opts.forzarNuevo && !opts.actualizarId) {
+    const mismaVariable = existentes.filter((x) => x.variable === u.variable);
+    // 1) Valor EXACTO (normalizado) → actualiza el gramaje del umbral existente
+    const exacto = mismaVariable.find((x) => normalizarTexto(x.valor) === normalizarTexto(u.valor));
+    if (exacto) {
+      const actualizado: UmbralAlerta = { ...exacto, umbralGramos: u.umbralGramos };
+      await b.actualizarUmbral(actualizado);
+      return { tipo: 'actualizado', umbral: actualizado };
+    }
+    // 2) Valor APROXIMADO (typo/transposición/acentos) → sugiere confirmar
+    const aproximados = mismaVariable
+      .filter((x) => coincideAprox(x.valor, u.valor))
+      .map((x) => ({ x, dist: distanciaLevenshtein(normalizarTexto(x.valor), normalizarTexto(u.valor)) }))
+      .sort((a, z) => a.dist - z.dist);
+    if (aproximados.length > 0) return { tipo: 'sugerencia', candidato: aproximados[0].x };
+  }
+
+  // 3) Crear nuevo
   let max = 0;
   for (const x of existentes) {
     const n = parseInt(x.id.replace('UMB-', ''), 10);
@@ -303,7 +349,7 @@ export async function crearUmbral(u: Omit<UmbralAlerta, 'id'>): Promise<UmbralAl
   }
   const nuevo: UmbralAlerta = { ...u, id: `UMB-${String(max + 1).padStart(3, '0')}` };
   await b.crearUmbral(nuevo);
-  return nuevo;
+  return { tipo: 'creado', umbral: nuevo };
 }
 
 export async function eliminarUmbral(id: string): Promise<void> {
@@ -352,7 +398,7 @@ export async function getDashboard(): Promise<DashboardData> {
     tiempoPorImpresora: Array.from(tiempoPorImpresoraMap.entries()).map(([impresora, horas]) => ({
       impresora, horas: Math.round(horas * 10) / 10,
     })),
-    alertasStock: calcularAlertas(filamentos, umbrales),
+    alertasUmbral: calcularAlertasAgregadas(filamentos, umbrales),
     proximasEntregas: pendientes.slice(-8).reverse().map((s) => ({
       nombre: s.nombre, pieza: s.descripcionPieza.slice(0, 80), fecha: s.fechaTentativa, estado: s.estado,
     })),

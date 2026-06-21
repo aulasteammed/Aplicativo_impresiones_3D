@@ -29,10 +29,13 @@ export default function Dashboard() {
         </Aviso>
       )}
 
-      {datos.alertasStock.length > 0 && (
+      {datos.alertasUmbral.length > 0 && (
         <Aviso tipo="alerta">
-          <b>⚠ Stock bajo de filamento:</b>{' '}
-          {datos.alertasStock.map((a) => `${a.tipo} ${a.color} (${a.filamentoId}: ${a.gramosRestantes} g, umbral ${a.umbral} g)`).join(' · ')}
+          <b>⚠ Alertas de stock (por umbral):</b>{' '}
+          {datos.alertasUmbral.map((a) => {
+            const etq = a.variable === 'color' ? 'Color' : a.variable === 'marca' ? 'Marca' : 'Tipo';
+            return `${etq} ${a.valor}: ${Math.round(a.total)} g / umbral ${a.umbralGramos} g (${a.estado === 'debajo' ? 'por debajo' : 'cerca'})`;
+          }).join(' · ')}
         </Aviso>
       )}
 
