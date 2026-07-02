@@ -87,6 +87,42 @@ export function coincideAprox(a: string, b: string): boolean {
   return distanciaLevenshtein(na, nb) <= umbral;
 }
 
+// Materiales conocidos (forma canónica). Si el usuario escribe uno con otra
+// capitalización o un pequeño error, se mapea a esta forma para evitar duplicados.
+export const MATERIALES_CANONICOS = [
+  'PLA', 'PETG', 'ABS', 'TPU', 'ASA', 'Nylon', 'PC', 'PVA', 'HIPS', 'PP', 'PA',
+  'Resina', 'PLA+', 'PLA-CF', 'PETG-CF', 'PA-CF', 'PC-CF',
+];
+
+/** Normaliza el material escrito por el usuario a su forma canónica con tolerancia
+ *  a mayúsculas/acentos y a pequeños errores de tecleo (p. ej. "petg" y "pteg" →
+ *  "PETG"). Si no se parece a ninguno conocido, conserva lo escrito (material nuevo). */
+export function canonicalizarMaterial(input: string): string {
+  const limpio = (input ?? '').trim();
+  if (!limpio) return '';
+  const objetivo = normalizarTexto(limpio);
+
+  // 1) Coincidencia EXACTA normalizada → respeta el material conocido tal cual
+  //    (protege códigos cortos legítimos: "pa" se queda PA, no se mapea a PLA).
+  for (const m of MATERIALES_CANONICOS) {
+    if (normalizarTexto(m) === objetivo) return m;
+  }
+  if (objetivo === 'resin') return 'Resina';
+
+  // 2) Coincidencia APROXIMADA (typo/transposición) → el conocido más cercano
+  let mejor: string | null = null;
+  let mejorDist = Infinity;
+  for (const m of MATERIALES_CANONICOS) {
+    if (!coincideAprox(m, limpio)) continue;
+    const d = distanciaLevenshtein(normalizarTexto(m), objetivo);
+    if (d < mejorDist) { mejorDist = d; mejor = m; }
+  }
+  if (mejor) return mejor;
+
+  // 3) No reconocido → se conserva lo escrito (material nuevo)
+  return limpio;
+}
+
 // Un total dentro de este % por encima del umbral se considera "cerca del límite".
 export const MARGEN_PROXIMIDAD_UMBRAL = 0.10;
 

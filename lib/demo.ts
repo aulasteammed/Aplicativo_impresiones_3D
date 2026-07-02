@@ -58,7 +58,7 @@ function seed(): DemoStore {
       descripcionPieza: 'Base de 22cm x 22cm con orificios para acople de agujas', objetivoPieza: 'Simulador de lluvias',
       fechaTentativa: '01/04/2026', impresora: 'Sonny', tiempoHoras: '3.73', gramos: '120.76', material: 'PETG',
       estado: 'Finalizada', resultado: 'Exitoso', desperdicio: '4', comentarios: 'Buena adhesión, sin warping',
-      nombreProyecto: 'Simulador de lluvias', filamentoId: 'FIL-001',
+      filamentoId: 'FIL-001',
     },
     {
       fila: 3, marcaTemporal: '28/04/2026 10:06:11', codigo: 'IMP-260601-01',
@@ -67,7 +67,7 @@ function seed(): DemoStore {
       servicio: 'Impresión 3D', descripcionPieza: 'Módulo 1 jardín vertical', objetivoPieza: 'Jardín vertical para fachadas',
       fechaTentativa: '29/04/2026', impresora: 'Sonny', tiempoHoras: '3.18', gramos: '120.97', material: 'PETG',
       estado: 'Activa', resultado: '', desperdicio: '', comentarios: '',
-      nombreProyecto: 'Jardín vertical Castilla', filamentoId: 'FIL-001',
+      filamentoId: 'FIL-001',
     },
   ];
 
@@ -175,7 +175,6 @@ export async function crearProyecto(
       resultado: '',
       desperdicio: '',
       comentarios: '',
-      nombreProyecto: codigoLimpio,
       filamentoId: it.filamentoId ?? '',
     });
   }

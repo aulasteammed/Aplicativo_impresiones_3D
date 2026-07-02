@@ -9,9 +9,7 @@ import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
-import { generarCodigoProyecto } from '@/lib/util';
-
-const MATERIALES = ['PLA', 'PETG', 'ABS', 'TPU', 'Resina', 'Otro'];
+import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS } from '@/lib/util';
 
 export default function PaginaProyectos() {
   const { datos, cargando, error, recargar } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos');
@@ -243,6 +241,19 @@ function ModalProyecto({
     setItems(items.map((i) => (i._key === key ? { ...i, ...cambios } : i)));
   }
 
+  /** Cambios al ESTABLECER un material (canonicalizado). Si el filamento ya
+   *  asignado es de otro tipo, lo desasigna automáticamente para mantener
+   *  la concordancia entre Material y Filamento (inventario). */
+  function cambiosMaterial(key: string, valorCrudo: string): Partial<ItemProyecto> {
+    const material = canonicalizarMaterial(valorCrudo);
+    const item = items.find((i) => i._key === key);
+    const fl = item?.filamentoId ? filamentos.find((f) => f.id === item.filamentoId) : undefined;
+    if (fl && material.trim() && canonicalizarMaterial(String(fl.tipo)) !== material) {
+      return { material, filamentoId: undefined };
+    }
+    return { material };
+  }
+
   async function analizarCapturas(files: FileList | null) {
     if (!files || files.length === 0) return;
     setAnalizando(true);
@@ -265,7 +276,7 @@ function ModalProyecto({
     const cambios: Partial<ItemProyecto> = {};
     if (r.pesoGramos != null) cambios.gramos = r.pesoGramos;
     if (r.tiempoHoras != null) cambios.tiempoHoras = r.tiempoHoras;
-    if (r.material) cambios.material = r.material;
+    if (r.material) Object.assign(cambios, cambiosMaterial(key, r.material));
     actualizarItem(key, cambios);
   }
 
@@ -277,7 +288,14 @@ function ModalProyecto({
     setGuardando(true);
     setError('');
     try {
-      const payload = items.map(({ _key, ...rest }) => rest);
+      const payload = items.map(({ _key, ...rest }) => {
+        const material = canonicalizarMaterial(rest.material);
+        // Red de seguridad: si el filamento asignado no concuerda con el material, desasignar.
+        const fl = rest.filamentoId ? filamentos.find((f) => f.id === rest.filamentoId) : undefined;
+        const filamentoId = fl && material.trim() && canonicalizarMaterial(String(fl.tipo)) !== material
+          ? undefined : rest.filamentoId;
+        return { ...rest, material, filamentoId };
+      });
       let res: Response;
       if (esEdicion) {
         res = await fetch(`/api/proyectos/${encodeURIComponent(proyectoExistente!.codigo)}`, {
@@ -414,43 +432,92 @@ function ModalProyecto({
             <div>
               <p className="label">Datos de impresión por solicitud *</p>
               <div className="space-y-2">
-                {items.map((it) => (
-                  <div key={it._key} className="grid items-center gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_110px_110px_130px_160px]">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{it.nombre}</p>
-                      <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
+                {items.map((it) => {
+                  const fil = filamentos.find((f) => f.id === it.filamentoId);
+                  const insuficiente = !!fil && it.gramos > 0 && it.gramos > fil.gramosRestantes;
+                  const desc = (f: Filamento) => `${f.tipo} ${f.color}${f.marca ? ` ${f.marca}` : ''}`;
+                  // El tiempo se guarda internamente en horas decimales (tiempoHoras);
+                  // aquí se reparte en horas + minutos para mostrarlo/editarlo.
+                  const totalMin = Math.round((it.tiempoHoras || 0) * 60);
+                  const horas = Math.floor(totalMin / 60);
+                  const minutos = totalMin % 60;
+                  // Filtra los filamentos por el Material indicado (con tolerancia),
+                  // mostrando solo los del mismo tipo con stock (más el ya asignado).
+                  const matCanon = canonicalizarMaterial(it.material);
+                  const coincideMaterial = (f: Filamento) =>
+                    !it.material.trim() || canonicalizarMaterial(String(f.tipo)) === matCanon;
+                  const opcionesFil = filamentos.filter(
+                    (f) => (f.gramosRestantes > 0 && coincideMaterial(f)) || f.id === it.filamentoId);
+                  const sinCompatibles = !!it.material.trim()
+                    && !filamentos.some((f) => f.gramosRestantes > 0 && coincideMaterial(f));
+                  return (
+                    <div key={it._key} className="rounded-lg border border-slate-200 p-3">
+                      <div className="grid items-center gap-2 md:grid-cols-[1fr_150px_100px_120px_200px]">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{it.nombre}</p>
+                          <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
+                        </div>
+                        <div>
+                          <label className="label">Tiempo (h / min)</label>
+                          <div className="flex gap-1">
+                            <input type="number" min="0" className="input" placeholder="h" value={horas || ''}
+                              onChange={(e) => actualizarItem(it._key, { tiempoHoras: (parseInt(e.target.value) || 0) + minutos / 60 })} />
+                            <input type="number" min="0" max="59" className="input" placeholder="min" value={minutos || ''}
+                              onChange={(e) => actualizarItem(it._key, { tiempoHoras: horas + (parseInt(e.target.value) || 0) / 60 })} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="label">Gramos</label>
+                          <input type="number" min="0" step="0.1" className="input" value={it.gramos || ''}
+                            onChange={(e) => actualizarItem(it._key, { gramos: parseFloat(e.target.value) || 0 })} />
+                        </div>
+                        <div>
+                          <label className="label">Material</label>
+                          <input
+                            className="input"
+                            list="cama-materiales"
+                            value={it.material}
+                            onChange={(e) => actualizarItem(it._key, { material: e.target.value })}
+                            onBlur={(e) => actualizarItem(it._key, cambiosMaterial(it._key, e.target.value))}
+                            placeholder="Escriba el material"
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Filamento (inventario)</label>
+                          <select
+                            className={`input ${insuficiente ? '!border-amber-400 !ring-amber-200' : ''}`}
+                            value={it.filamentoId ?? ''}
+                            onChange={(e) => {
+                              const id = e.target.value || undefined;
+                              const fl = filamentos.find((f) => f.id === id);
+                              actualizarItem(it._key, fl ? { filamentoId: id, material: canonicalizarMaterial(String(fl.tipo)) } : { filamentoId: id });
+                            }}
+                          >
+                            <option value="">Sin asignar</option>
+                            {opcionesFil.map((fl) => (
+                              <option key={fl.id} value={fl.id}>{desc(fl)} — {Math.round(fl.gramosRestantes)} g disp.</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {fil ? (
+                        <p className={`mt-2 text-xs ${insuficiente ? 'text-amber-700' : 'text-slate-500'}`}>
+                          {insuficiente
+                            ? `⚠ Requiere ${Math.round(it.gramos)} g y solo hay ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontará igual al finalizar (puede quedar en 0).`
+                            : `Disponible: ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontarán los gramos de esta pieza al finalizar la cama.`}
+                        </p>
+                      ) : sinCompatibles ? (
+                        <p className="mt-2 text-xs text-amber-700">No hay filamentos de <b>{canonicalizarMaterial(it.material)}</b> con stock en el inventario. Registre uno o cambie el material.</p>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-400">Sin filamento asignado: no se descontará inventario al finalizar.</p>
+                      )}
                     </div>
-                    <div>
-                      <label className="label">Tiempo (h)</label>
-                      <input type="number" min="0" step="0.1" className="input" value={it.tiempoHoras || ''}
-                        onChange={(e) => actualizarItem(it._key, { tiempoHoras: parseFloat(e.target.value) || 0 })} />
-                    </div>
-                    <div>
-                      <label className="label">Gramos</label>
-                      <input type="number" min="0" step="0.1" className="input" value={it.gramos || ''}
-                        onChange={(e) => actualizarItem(it._key, { gramos: parseFloat(e.target.value) || 0 })} />
-                    </div>
-                    <div>
-                      <label className="label">Material</label>
-                      <select className="input" value={it.material} onChange={(e) => actualizarItem(it._key, { material: e.target.value })}>
-                        {MATERIALES.map((m) => <option key={m}>{m}</option>)}
-                        {!MATERIALES.includes(it.material) && it.material && <option>{it.material}</option>}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="label">Rollo (inventario)</label>
-                      <select className="input" value={it.filamentoId ?? ''} onChange={(e) => actualizarItem(it._key, { filamentoId: e.target.value || undefined })}>
-                        <option value="">Sin asignar</option>
-                        {filamentos
-                          .filter((fl) => !it.material || fl.tipo.toLowerCase() === it.material.toLowerCase() || true)
-                          .map((fl) => (
-                            <option key={fl.id} value={fl.id}>{fl.id} · {fl.tipo} {fl.color} ({Math.round(fl.gramosRestantes)} g)</option>
-                          ))}
-                      </select>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              <datalist id="cama-materiales">
+                {MATERIALES_CANONICOS.map((m) => <option key={m} value={m} />)}
+              </datalist>
             </div>
           </>
         )}

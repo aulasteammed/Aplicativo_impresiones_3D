@@ -23,7 +23,7 @@ export default function PaginaHistorial() {
       if (filtroResultado && r.resultado !== filtroResultado) return false;
       if (filtroMaterial && r.material !== filtroMaterial) return false;
       if (!q) return true;
-      return [r.codigo, r.nombre, r.correo, r.descripcionPieza, r.impresora, r.nombreProyecto]
+      return [r.codigo, r.nombre, r.correo, r.descripcionPieza, r.impresora, r.filamentoId]
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
   }, [registros, busqueda, filtroResultado, filtroMaterial]);
@@ -110,7 +110,8 @@ export default function PaginaHistorial() {
       <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Registro — ${detalle?.codigo || 'sin código'}`} ancho="max-w-3xl">
         {detalle && (
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Campo etiqueta="Cama" valor={`${detalle.nombreProyecto || '—'} (${detalle.codigo || 'sin código'})`} />
+            <Campo etiqueta="Cama" valor={detalle.codigo || 'sin código'} />
+            <Campo etiqueta="Filamento (inventario)" valor={detalle.filamentoId || '—'} />
             <Campo etiqueta="Marca temporal solicitud" valor={detalle.marcaTemporal} />
             <Campo etiqueta="Solicitante" valor={detalle.nombre} />
             <Campo etiqueta="Correo" valor={detalle.correo} />

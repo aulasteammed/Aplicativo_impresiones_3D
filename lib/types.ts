@@ -74,7 +74,6 @@ export interface RegistroHistorial {
   resultado: string;
   desperdicio: string;
   comentarios: string;
-  nombreProyecto: string;
   filamentoId: string;
 }
 

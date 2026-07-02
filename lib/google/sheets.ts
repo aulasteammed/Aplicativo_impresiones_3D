@@ -106,10 +106,10 @@ export async function actualizarEstadoSolicitud(id: string, fila: number, estado
 }
 
 // ---------------------------------------------------------------------------
-// HISTORIAL — columnas A..S existentes + T (Nombre proyecto) + U (Filamento ID)
+// HISTORIAL — columnas A..S existentes + T (Filamento ID)
 // ---------------------------------------------------------------------------
 
-const HIST_RANGO = (tab: string) => `'${tab}'!A2:U`;
+const HIST_RANGO = (tab: string) => `'${tab}'!A2:T`;
 
 export async function getHistorial(): Promise<RegistroHistorial[]> {
   const filas = await leerRango(config.sheetHistorialId, HIST_RANGO(config.tabHistorial));
@@ -140,8 +140,7 @@ function filaAHistorial(f: string[], fila: number): RegistroHistorial {
     resultado: f[16] ?? '',
     desperdicio: f[17] ?? '',
     comentarios: f[18] ?? '',
-    nombreProyecto: f[19] ?? '',
-    filamentoId: f[20] ?? '',
+    filamentoId: f[19] ?? '', // T (antes nombre del proyecto)
   };
 }
 
@@ -154,7 +153,7 @@ export function agruparProyectos(registros: RegistroHistorial[]): Proyecto[] {
     if (!p) {
       p = {
         codigo: r.codigo,
-        nombre: r.nombreProyecto || r.codigo,
+        nombre: r.codigo,
         impresora: r.impresora,
         estado: (r.estado || 'Activa') as EstadoProyecto,
         resultado: (r.resultado as Proyecto['resultado']) || '',
@@ -182,19 +181,17 @@ export async function getProyectos(): Promise<Proyecto[]> {
   return agruparProyectos(await getHistorial());
 }
 
-/** Garantiza los encabezados de las columnas extra T y U */
+/** Garantiza el encabezado de la columna extra T (Filamento ID) */
 async function asegurarColumnasExtra(): Promise<void> {
   const tab = config.tabHistorial;
-  const fila1 = await leerRango(config.sheetHistorialId, `'${tab}'!T1:U1`);
-  const t = fila1[0]?.[0] ?? '';
-  const u = fila1[0]?.[1] ?? '';
-  if (t !== 'Nombre del proyecto' || u !== 'Filamento ID') {
-    await escribirRango(config.sheetHistorialId, `'${tab}'!T1:U1`, [['Nombre del proyecto', 'Filamento ID']]);
+  const fila1 = await leerRango(config.sheetHistorialId, `'${tab}'!T1:T1`);
+  if ((fila1[0]?.[0] ?? '') !== 'Filamento ID') {
+    await escribirRango(config.sheetHistorialId, `'${tab}'!T1`, [['Filamento ID']]);
   }
 }
 
 function itemAFilaHistorial(
-  codigo: string, nombreProyecto: string, impresora: string, estado: string,
+  codigo: string, impresora: string, estado: string,
   item: ItemProyecto, solicitud: Solicitud | undefined,
 ): (string | number)[] {
   return [
@@ -217,8 +214,7 @@ function itemAFilaHistorial(
     '',                                     // Q resultado
     '',                                     // R desperdicio
     '',                                     // S comentarios
-    nombreProyecto,                         // T
-    item.filamentoId ?? '',                 // U
+    item.filamentoId ?? '',                 // T filamento ID (antes en U)
   ];
 }
 
@@ -233,8 +229,7 @@ export async function crearProyecto(
     throw new Error(`Ya existe una cama con el código "${codigoLimpio}". Use otro código.`);
   }
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
-  // El código es también el nombre/identificador visible de la cama (columna T).
-  const filas = items.map((it) => itemAFilaHistorial(codigoLimpio, codigoLimpio, impresora, 'Activa', it, porId.get(it.solicitudId)));
+  const filas = items.map((it) => itemAFilaHistorial(codigoLimpio, impresora, 'Activa', it, porId.get(it.solicitudId)));
   await anexarFilas(config.sheetHistorialId, `'${config.tabHistorial}'!A1`, filas);
   return codigoLimpio;
 }
@@ -249,7 +244,7 @@ export async function agregarItemsProyecto(
   const ref = existentes[0];
   const porId = new Map(solicitudes.map((s) => [s.id, s]));
   const filas = items.map((it) =>
-    itemAFilaHistorial(codigo, ref.nombreProyecto || codigo, ref.impresora, ref.estado || 'Activa', it, porId.get(it.solicitudId)),
+    itemAFilaHistorial(codigo, ref.impresora, ref.estado || 'Activa', it, porId.get(it.solicitudId)),
   );
   await anexarFilas(config.sheetHistorialId, `'${config.tabHistorial}'!A1`, filas);
 }
