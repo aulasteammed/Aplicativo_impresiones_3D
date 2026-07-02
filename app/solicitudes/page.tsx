@@ -197,6 +197,7 @@ function ModalCorreo({
   onCerrar: () => void;
   onResultado: (tipo: 'ok' | 'error', texto: string) => void;
 }) {
+  const [destinatario, setDestinatario] = useState(solicitud.correo);
   const [comentarios, setComentarios] = useState('');
   const [firmaNombre, setFirmaNombre] = useState('');
   const [firmaRol, setFirmaRol] = useState('');
@@ -204,8 +205,12 @@ function ModalCorreo({
   const [enviando, setEnviando] = useState(false);
   const anio = new Date().getFullYear();
 
+  // Uno o varios correos separados por coma (o ;); se normalizan a coma para Gmail.
+  const correos = destinatario.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  const correosValidos = correos.length > 0 && correos.every((c) => /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(c));
+
   const payload = {
-    destinatario: solicitud.correo,
+    destinatario: correos.join(','),
     nombreSolicitante: solicitud.nombre,
     pieza: solicitud.descripcionPieza.slice(0, 120),
     estadoNuevo,
@@ -247,9 +252,23 @@ function ModalCorreo({
     <Modal abierto onCerrar={onCerrar} titulo={`Notificar cambio de estado → ${estadoNuevo}`} ancho="max-w-3xl">
       <div className="space-y-4">
         <Aviso tipo="info">
-          Se enviará un correo a <b>{solicitud.correo || '(sin correo identificado)'}</b> con el mensaje generado
-          automáticamente para el estado <b>{estadoNuevo}</b>, sus comentarios y la invitación al aula STEAM Sonny Jiménez M3 119-120.
+          El mensaje se genera automáticamente para el estado <b>{estadoNuevo}</b>, con sus comentarios y la
+          invitación al aula STEAM Sonny Jiménez M3 119-120. Revise el/los destinatario(s) antes de enviar.
         </Aviso>
+
+        <div>
+          <label className="label">Destinatario(s) *</label>
+          <input
+            className={`input ${destinatario.trim() && !correosValidos ? '!border-red-400 !ring-red-200' : ''}`}
+            value={destinatario}
+            onChange={(e) => setDestinatario(e.target.value)}
+            placeholder="correo@unal.edu.co, otro@correo.com"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Prellenado con el correo de la solicitud (columna C). Puede editarlo o añadir varios separados por comas.
+            {destinatario.trim() && !correosValidos && <span className="text-red-600"> Hay un correo con formato inválido.</span>}
+          </p>
+        </div>
 
         <div>
           <label className="label">Comentarios sobre el cambio de estado (se anexan al correo)</label>
@@ -288,7 +307,7 @@ function ModalCorreo({
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={verVistaPrevia}>Vista previa</button>
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={enviar} disabled={enviando || !firmaNombre.trim() || !firmaRol.trim() || !solicitud.correo}>
+          <button className="btn-primary" onClick={enviar} disabled={enviando || !firmaNombre.trim() || !firmaRol.trim() || !correosValidos}>
             {enviando ? 'Enviando…' : 'Enviar correo'}
           </button>
         </div>

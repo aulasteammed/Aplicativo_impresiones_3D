@@ -2,7 +2,7 @@
   "name": "aula-steam-impresiones-3d",
   "version": "1.0.0",
   "private": true,
-  "description": "Aplicativo web de gestión de solicitudes, proyectos e inventario de impresión 3D — Aula STEAM Sonny Jiménez, UNAL Medellín",
+  "description": "Aplicativo web de gestión de solicitudes, camas de impresión, historial e inventario de impresión 3D — Aula STEAM Sonny Jiménez, UNAL Medellín",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
