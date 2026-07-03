@@ -8,6 +8,7 @@ import {
   Filamento, MovimientoInventario, Impresora, Mantenimiento, EstadoProyecto, UmbralAlerta,
 } from '../types';
 import { normalizarEstado, extraerCorreo, num } from '../util';
+import { NuevaSolicitud } from './forms';
 
 let _sheets: sheets_v4.Sheets | null = null;
 
@@ -88,6 +89,34 @@ function filaASolicitud(f: string[], fila: number): Solicitud {
     celular: f[11] ?? '',            // L: "Número de celular de contacto"
     estado: normalizarEstado(f[12]), // M: estado de la solicitud
   };
+}
+
+/** Crea una solicitud nueva anexándola directamente a la hoja de respuestas.
+ *  Se usa en lugar del Google Form porque los formularios con pregunta de subida
+ *  de archivos obligan a iniciar sesión y rechazan el POST anónimo de la app
+ *  (HTTP 401). La fila queda igual que una respuesta del Form: columna J (archivos)
+ *  y M (estado) vacías → la app la muestra como estado "Nueva". Devuelve la marca
+ *  temporal generada, que funciona como identificador de la solicitud. */
+export async function crearSolicitudEnHoja(datos: NuevaSolicitud): Promise<string> {
+  const ahora = new Date();
+  const marca = `${String(ahora.getDate()).padStart(2, '0')}/${String(ahora.getMonth() + 1).padStart(2, '0')}/${ahora.getFullYear()} ${ahora.toTimeString().slice(0, 8)}`;
+  const fila: (string | number)[] = [
+    marca,                  // A marca temporal (id de la solicitud)
+    datos.nombre,           // B nombre
+    datos.correo,           // C correo
+    datos.rol,              // D rol
+    datos.programa,         // E programa
+    datos.motivo,           // F motivo
+    datos.servicio,         // G servicio
+    datos.descripcionPieza, // H descripción
+    datos.objetivoPieza,    // I objetivo
+    '',                     // J archivos (la app no adjunta archivos)
+    datos.fechaTentativa,   // K fecha tentativa
+    datos.celular,          // L celular
+    '',                     // M estado (vacío = "Nueva")
+  ];
+  await anexarFilas(config.sheetSolicitudesId, `'${config.tabSolicitudes}'!A1`, [fila]);
+  return marca;
 }
 
 /** Actualiza la columna M (estado) verificando que la fila siga correspondiendo

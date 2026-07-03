@@ -3,6 +3,13 @@ node_modules/
 out/
 .env.local
 .env*.local
+
+# Credenciales de la service account de Google (¡nunca subir!)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!*.config.json
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
