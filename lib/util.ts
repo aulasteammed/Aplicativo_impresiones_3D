@@ -38,8 +38,22 @@ export function num(v: string | number | null | undefined): number {
   return isNaN(n) ? 0 : n;
 }
 
+// Colombia usa UTC-5 todo el año (no tiene horario de verano). Se centraliza aquí
+// para que el "día" del sistema cambie a la medianoche de Colombia y no a la del
+// servidor (que en producción —p. ej. Vercel— suele ser UTC). Así los códigos de
+// cama, las fechas de movimientos y el corte mensual del dashboard no se desfasan
+// un día cuando la operación ocurre entre la medianoche local y la de UTC.
+const OFFSET_COLOMBIA_MS = 5 * 60 * 60 * 1000; // UTC-5
+
+/** Instante actual desplazado a la hora de pared de Colombia (UTC-5). Léelo con los
+ *  getters UTC (getUTCFullYear/getUTCMonth/getUTCDate) o con toISOString(). */
+function ahoraColombia(): Date {
+  return new Date(Date.now() - OFFSET_COLOMBIA_MS);
+}
+
+/** Fecha de hoy (YYYY-MM-DD) según la hora de Colombia (UTC-5) */
 export function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return ahoraColombia().toISOString().slice(0, 10);
 }
 
 /** Normaliza texto para comparaciones tolerantes: sin acentos, en minúsculas,
@@ -145,10 +159,12 @@ export function calcularAlertasAgregadas(filamentos: Filamento[], umbrales: Umbr
   return out;
 }
 
-/** Genera el código de proyecto IMP-AAMMDD-NN a partir de los códigos existentes */
+/** Genera el código de proyecto IMP-AAMMDD-NN a partir de los códigos existentes.
+ *  La fecha AAMMDD se toma en hora de Colombia (UTC-5), no en la del servidor, para
+ *  que el consecutivo del día no se reinicie ni se adelante cerca de la medianoche. */
 export function generarCodigoProyecto(codigosExistentes: string[]): string {
-  const d = new Date();
-  const fecha = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const d = ahoraColombia();
+  const fecha = `${String(d.getUTCFullYear()).slice(2)}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
   const prefijo = `IMP-${fecha}-`;
   const delDia = codigosExistentes.filter((c) => c.startsWith(prefijo));
   let max = 0;

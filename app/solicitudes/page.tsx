@@ -323,6 +323,15 @@ function ModalCorreo({
 const MOTIVOS = ['Investigación', 'Asignaturas de proyectos en ingeniería', 'Proyecto académico', 'Curso académico', 'Proyecto personal'];
 const SERVICIOS = ['Impresión 3D', 'Modelado 3D', 'Modelado 3D e Impresión 3D'];
 const ROLES = ['Estudiante', 'Profesor(a)', 'Contratista', 'Administrativo', 'Egresado(a)'];
+const PROGRAMAS = [
+  'Arquitectura', 'Artes plásticas', 'Construcción', 'Matemáticas', 'Estadística',
+  'Ingeniería biológica', 'Ingeniería física', 'Ciencias de la computación',
+  'Ingeniería agrícola', 'Ingeniería agronómica', 'Ingeniería forestal', 'Zootecnia',
+  'Ciencias políticas', 'Historia', 'Economía', 'Ingeniería Civil', 'Ingeniería Administrativa',
+  'Ingeniería Ambiental', 'Ingeniería de petróleos', 'Ingeniería Mecánica', 'Ingeniería Eléctrica',
+  'Ingeniería de Control', 'Ingeniería Geológica', 'Ingeniería Química', 'Ingeniería Industrial',
+  'Ingeniería de Minas y Metalurgia', 'Ingeniería de Sistemas e Informática',
+];
 
 function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (texto: string) => void }) {
   const [f, setF] = useState({
@@ -333,6 +342,9 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const [error, setError] = useState('');
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF({ ...f, [k]: e.target.value });
+
+  // El programa académico solo aplica a estudiantes y egresados
+  const programaHabilitado = f.rol === 'Estudiante' || f.rol === 'Egresado(a)';
 
   async function crear() {
     setEnviando(true);
@@ -373,11 +385,29 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
           </div>
           <div>
             <label className="label">Rol</label>
-            <select className="input" value={f.rol} onChange={set('rol')}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+            <select
+              className="input"
+              value={f.rol}
+              onChange={(e) => {
+                const rol = e.target.value;
+                const habilita = rol === 'Estudiante' || rol === 'Egresado(a)';
+                setF({ ...f, rol, programa: habilita ? f.programa : '' });
+              }}
+            >
+              {ROLES.map((r) => <option key={r}>{r}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Programa académico</label>
-            <input className="input" value={f.programa} onChange={set('programa')} />
+            <select
+              className="input disabled:cursor-not-allowed disabled:opacity-60"
+              value={f.programa}
+              onChange={set('programa')}
+              disabled={!programaHabilitado}
+            >
+              <option value="">{programaHabilitado ? 'Seleccione el programa…' : 'Solo aplica a Estudiante o Egresado(a)'}</option>
+              {PROGRAMAS.map((p) => <option key={p}>{p}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Motivo de la solicitud</label>

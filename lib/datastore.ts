@@ -53,13 +53,24 @@ export async function cambiarEstadoProyecto(codigo: string, estado: EstadoProyec
 }
 
 /**
- * Finaliza una cama de impresión:
- * 1. Actualiza Resultado / Desperdicio / Comentarios / Estado=Finalizada en
- *    TODAS las filas de la cama en el Sheets de Historial.
- * 2. Descuenta el inventario de filamento:
- *    - Exitoso  → gramos estimados por ítem + desperdicio reportado.
- *    - Fallido  → solo el desperdicio reportado (o los gramos estimados si no se reportó).
- * 3. Suma las horas de impresión a la impresora.
+ * Finaliza una cama de impresión de forma **transaccional** (best-effort sobre
+ * Google Sheets, que no soporta transacciones ACID):
+ *
+ * - FASE 1 · PREFLIGHT: solo lecturas y cálculo. Se leen historial, filamentos,
+ *   impresoras y movimientos, y se calcula TODO el descuento (agregado por rollo)
+ *   y las horas antes de escribir nada, para detectar problemas por adelantado.
+ * - FASE 2 · COMMIT: se aplican los descuentos de inventario y las horas, y SOLO
+ *   al final se marca el historial como Finalizada. Si una escritura de inventario
+ *   falla, la cama queda sin finalizar y puede reintentarse.
+ *
+ * Idempotencia: si la cama ya está finalizada o ya tiene movimientos de descuento
+ * registrados (reintento o doble clic), NO se vuelve a descontar inventario ni a
+ * sumar horas —evita el doble gasto—. Ante un fallo parcial se prefiere el
+ * sub-descuento (visible y corregible) al doble descuento.
+ *
+ * Descuento por resultado:
+ *  - Exitoso → gramos estimados por ítem + desperdicio reportado.
+ *  - Fallido → solo el desperdicio reportado (o los gramos estimados si no se reportó).
  *
  * NOTA: NO modifica el estado de las solicitudes vinculadas; permanecen como
  * estaban (p. ej. "Aprobada"). El paso a "Atendida" lo realiza manualmente el
@@ -74,56 +85,84 @@ export async function finalizarProyecto(
   const b = backend();
   const advertencias: string[] = [];
 
-  // 1. Historial
-  const filas = await b.finalizarProyectoEnHistorial(codigo, resultado, desperdicio ?? '', comentarios);
+  // ── FASE 1 · PREFLIGHT (solo lecturas y cálculo; NO se escribe nada) ────────
+  const [historial, filamentos, impresoras, movimientos] = await Promise.all([
+    b.getHistorial(), b.getFilamentos(), b.getImpresoras(), b.getMovimientos(),
+  ]);
 
-  // 2. Inventario
-  const filamentos = await b.getFilamentos();
+  const filas = historial.filter((r) => r.codigo === codigo);
+  if (filas.length === 0) throw new Error(`No se encontró la cama ${codigo} en el historial.`);
+
+  // Idempotencia: ¿el inventario ya se descontó en un intento anterior?
+  const yaFinalizada = filas.some((r) => (r.estado || '').toLowerCase() === 'finalizada');
+  const yaDescontado = movimientos.some(
+    (m) => m.proyectoCodigo === codigo && (m.motivo === 'impresión' || m.motivo === 'desperdicio'),
+  );
+  const inventarioYaAplicado = yaFinalizada || yaDescontado;
+
+  // Descuento AGREGADO por rollo (un solo ajuste por filamento aunque varias piezas
+  // usen el mismo): menos escrituras y sin lecturas/escrituras repetidas del rollo.
   const totalEstimado = filas.reduce((acc, r) => acc + num(r.gramos), 0);
-
-  // El desperdicio se reparte proporcionalmente entre los rollos usados
+  const descuentoPorRollo = new Map<string, number>();
   for (const r of filas) {
-    const filamentoId = r.filamentoId;
     const gramosItem = num(r.gramos);
     const proporcion = totalEstimado > 0 ? gramosItem / totalEstimado : 1 / filas.length;
     const desperdicioItem = (desperdicio ?? 0) * proporcion;
 
-    let aDescontar: number;
-    if (resultado === 'Exitoso') {
-      aDescontar = gramosItem + desperdicioItem;
-    } else {
-      aDescontar = desperdicio !== null ? desperdicioItem : gramosItem;
-    }
+    const aDescontar = resultado === 'Exitoso'
+      ? gramosItem + desperdicioItem
+      : (desperdicio !== null ? desperdicioItem : gramosItem);
     if (aDescontar <= 0) continue;
 
-    const fil = filamentoId ? filamentos.find((f) => f.id === filamentoId) : undefined;
-    if (!fil) {
-      if (filamentoId) advertencias.push(`Rollo ${filamentoId} no encontrado en inventario; no se descontó.`);
-      else advertencias.push(`El ítem de ${r.nombre} no tiene rollo asignado; no se descontó inventario.`);
+    if (!r.filamentoId) {
+      advertencias.push(`El ítem de ${r.nombre} no tiene rollo asignado; no se descontó inventario.`);
       continue;
     }
-    fil.gramosRestantes = Math.max(0, fil.gramosRestantes - aDescontar);
-    fil.comenzado = true;
-    await b.guardarFilamento(fil, false);
-    await b.registrarMovimiento({
-      fecha: hoyISO(),
-      filamentoId: fil.id,
-      proyectoCodigo: codigo,
-      gramos: -Math.round(aDescontar * 100) / 100,
-      motivo: resultado === 'Exitoso' ? 'impresión' : 'desperdicio',
-    });
+    if (!filamentos.some((f) => f.id === r.filamentoId)) {
+      advertencias.push(`Rollo ${r.filamentoId} no encontrado en inventario; no se descontó.`);
+      continue;
+    }
+    descuentoPorRollo.set(r.filamentoId, (descuentoPorRollo.get(r.filamentoId) ?? 0) + aDescontar);
   }
 
-  // 3. Horas de impresora
+  // Horas de impresión a acumular en la impresora de la cama (todas comparten impresora).
   const horas = filas.reduce((acc, r) => acc + parsearHoras(r.tiempoHoras), 0);
-  if (horas > 0) {
-    const impresoras = await b.getImpresoras();
-    const imp = impresoras.find((i) => i.nombre === filas[0].impresora || i.id === filas[0].impresora);
-    if (imp) {
-      imp.horasAcumuladas = Math.round((imp.horasAcumuladas + horas) * 100) / 100;
-      await b.guardarImpresora(imp, false);
+  const nombreImpresora = filas[0].impresora;
+  const impresora = horas > 0
+    ? impresoras.find((i) => i.nombre === nombreImpresora || i.id === nombreImpresora)
+    : undefined;
+  if (horas > 0 && !impresora) {
+    advertencias.push(`Impresora "${nombreImpresora}" no encontrada; no se acumularon horas.`);
+  }
+
+  // ── FASE 2 · COMMIT (escrituras) ────────────────────────────────────────────
+  // Inventario y horas primero; el historial se marca "Finalizada" al final para
+  // que un fallo de escritura de inventario deje la cama reintentable sin doble gasto.
+  if (inventarioYaAplicado) {
+    advertencias.push('La cama ya tenía registrado el descuento de inventario; no se volvió a descontar ni a sumar horas.');
+  } else {
+    for (const [filamentoId, aDescontar] of Array.from(descuentoPorRollo.entries())) {
+      const fil = filamentos.find((f) => f.id === filamentoId)!;
+      fil.gramosRestantes = Math.max(0, fil.gramosRestantes - aDescontar);
+      fil.comenzado = true;
+      await b.guardarFilamento(fil, false);
+      await b.registrarMovimiento({
+        fecha: hoyISO(),
+        filamentoId,
+        proyectoCodigo: codigo,
+        gramos: -Math.round(aDescontar * 100) / 100,
+        motivo: resultado === 'Exitoso' ? 'impresión' : 'desperdicio',
+      });
+    }
+
+    if (impresora) {
+      impresora.horasAcumuladas = Math.round((impresora.horasAcumuladas + horas) * 100) / 100;
+      await b.guardarImpresora(impresora, false);
     }
   }
+
+  // Marca de finalización (última escritura): Estado=Finalizada + resultado/desperdicio/comentarios.
+  await b.finalizarProyectoEnHistorial(codigo, resultado, desperdicio ?? '', comentarios);
 
   return { advertencias };
 }

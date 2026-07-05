@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Dashboard Aula STEAM — Propuesta</title>
+<style>
+  :root{
+    --bg:#f5f6fb; --card:#ffffff; --ink:#1f2440; --muted:#6b7280; --faint:#9aa1b2;
+    --line:#e7e9f2; --line2:#eef0f7;
+    --steam1:#6366f1; --steam2:#a855f7; --accent:#5b53e0; --accent-soft:#eef0fe;
+    --good:#10b981; --warn:#f59e0b; --crit:#f43f5e; --info:#3b82f6; --neutral:#aab1c4;
+    --r:14px;
+    --sans:-apple-system,"Segoe UI",Roboto,ui-sans-serif,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:26px 20px 60px}
+  .num{font-variant-numeric:tabular-nums}
+  h1,h2,h3{margin:0;text-wrap:balance}
+  /* ---------- header ---------- */
+  .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;margin-bottom:20px}
+  .title{font-size:26px;font-weight:800;letter-spacing:-.02em}
+  .title .grad{background:linear-gradient(90deg,var(--steam1),var(--steam2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:13px;margin-top:3px}
+  .stamp{font-size:11.5px;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--card)}
+  /* ---------- audit banner ---------- */
+  .audit{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:18px;
+    border-left:4px solid var(--steam1)}
+  .audit h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-bottom:10px}
+  .audit ul{margin:0;padding-left:0;list-style:none;display:grid;gap:7px}
+  .audit li{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:#414962}
+  .tick{flex:none;width:16px;height:16px;border-radius:5px;margin-top:1px;display:grid;place-items:center;font-size:10px;color:#fff;font-weight:700}
+  .t-ok{background:var(--good)} .t-warn{background:var(--warn)} .t-crit{background:var(--crit)}
+  /* ---------- legend / tags ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 2px 22px;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .d-live{background:var(--good)} .d-new{background:var(--accent)} .d-need{background:var(--neutral)}
+  .tag{font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;border-radius:999px;white-space:nowrap}
+  .tag-live{background:#e7f7f0;color:#0b7a53} .tag-new{background:var(--accent-soft);color:var(--accent)}
+  .tag-need{background:#eef0f4;color:#7a8397}
+  /* ---------- filter bar ---------- */
+  .filters{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:24px;
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .filters .flabel{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-right:2px}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:7px 12px;border:1px solid var(--line);
+    border-radius:999px;background:#fbfbfe;color:#434b63;cursor:pointer}
+  .chip svg{opacity:.5}
+  .chip.on{background:var(--accent-soft);border-color:#c9caf7;color:var(--accent);font-weight:600}
+  /* ---------- sections ---------- */
+  .sec{margin:30px 0 14px}
+  .sec-h{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .sec-h h2{font-size:17px;font-weight:750}
+  .sec-p{color:var(--muted);font-size:12.5px;margin-bottom:16px}
+  /* ---------- kpi ---------- */
+  .grid{display:grid;gap:14px}
+  .k4{grid-template-columns:repeat(4,1fr)}
+  .k3{grid-template-columns:repeat(3,1fr)}
+  .c2{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 17px}
+  .kpi .klabel{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .kpi .kval{font-size:31px;font-weight:800;letter-spacing:-.02em;margin-top:9px;line-height:1}
+  .kpi .ksub{font-size:12px;color:var(--faint);margin-top:7px}
+  .kpi.accent{background:linear-gradient(180deg,#fff,#fbf7ff);border-color:#ecdcff}
+  .kpi.crit{background:linear-gradient(180deg,#fff,#fff5f6);border-color:#ffdbe0}
+  .kpi.crit .kval{color:var(--crit)}
+  .kpi.warnb{background:linear-gradient(180deg,#fff,#fffdf3);border-color:#ffedc4}
+  .kpi.muteds{background:#fbfbfd;border-style:dashed}
+  .kpi.muteds .kval{color:var(--neutral)}
+  /* ---------- charts ---------- */
+  .chart-h{font-size:13.5px;font-weight:700;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .chart-cap{font-size:11.5px;color:var(--faint);margin-bottom:14px}
+  .bars{display:grid;gap:10px}
+  .bar-row{display:grid;grid-template-columns:130px 1fr 34px;align-items:center;gap:10px;font-size:12.5px}
+  .bar-row .bl{color:#4b536a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-track{height:16px;background:var(--line2);border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:6px;width:0;transition:width .9s cubic-bezier(.22,1,.36,1)}
+  .bar-row .bv{text-align:right;font-weight:700;color:#3c435a}
+  /* monthly columns */
+  .cols{display:flex;align-items:flex-end;gap:12px;height:150px;padding-top:8px}
+  .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px;height:100%}
+  .col .cbar{width:100%;max-width:46px;background:linear-gradient(180deg,var(--steam1),var(--steam2));border-radius:7px 7px 3px 3px;
+    height:0;transition:height .9s cubic-bezier(.22,1,.36,1);position:relative}
+  .col .cval{font-size:12px;font-weight:700;color:#3c435a}
+  .col .cl{font-size:11px;color:var(--faint)}
+  /* donut */
+  .donut-wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .donut{flex:none}
+  .dlegend{display:grid;gap:8px;font-size:12.5px;min-width:150px}
+  .dlegend .dr{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .dlegend .dn{display:flex;align-items:center;gap:8px;color:#4b536a}
+  .dlegend .dv{font-weight:700;color:#3c435a}
+  /* pipeline */
+  .pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+  .stage{flex:1;min-width:120px;background:#fbfbfe;border:1px solid var(--line);border-radius:11px;padding:12px 13px;position:relative}
+  .stage .sn{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  .stage .sv{font-size:24px;font-weight:800;margin-top:4px}
+  .stage .arrow{position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--faint);z-index:1;font-size:14px}
+  /* empty state note */
+  .note{background:#fbfbfd;border:1px dashed var(--line);border-radius:12px;padding:13px 15px;font-size:12.5px;color:#5a6276;
+    display:flex;gap:10px;align-items:flex-start}
+  .note b{color:#414962}
+  .foot{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--faint);text-align:center}
+  @media(max-width:820px){
+    .k4{grid-template-columns:repeat(2,1fr)} .k3,.c2{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:104px 1fr 30px}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1 class="title">Dashboard <span class="grad">Aula STEAM</span> · Impresión 3D</h1>
+      <p class="sub">Propuesta de rediseño — construida con tus datos reales · corte 3 jul 2026</p>
+    </div>
+    <div class="stamp">16 solicitudes · 10 registros de historial · inventario vacío</div>
+  </div>
+
+  <!-- AUDIT -->
+  <div class="audit">
+    <h3>Auditoría del dashboard actual</h3>
+    <ul>
+      <li><span class="tick t-ok">✓</span><div><b>Las métricas de solicitudes están correctas y al día.</b> Verifiqué contra la hoja: 3 nuevas, 1 en revisión, 16 totales — coinciden exactamente con lo que muestra el dashboard.</div></li>
+      <li><span class="tick t-crit">!</span><div><b>Tasa de éxito, tiempo por impresora, material y desperdicio muestran 0 / «—», pero NO es un error del código:</b> las columnas operativas del Historial (Impresora, Tiempo, Material, Resultado, Desperdicio) están <b>vacías</b> en casi todas las filas, y el <b>Inventario está sin cargar</b> (0 rollos, 0 movimientos). El dashboard es fiel; le faltan los datos de origen.</div></li>
+      <li><span class="tick t-warn">•</span><div><b>Datos con inconsistencias que ensucian los agrupamientos:</b> el campo «motivo» tiene duplicados por tildes/typos («Invesigación», «proyecto academico» / «Proyecto académico» / «Proyecto academico»). Conviene normalizarlos (o volverlos lista desplegable como hicimos con «programa»).</div></li>
+    </ul>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot d-live"></i> Disponible con tus datos actuales</span>
+    <span><i class="dot d-new"></i> Métrica nueva propuesta</span>
+    <span><i class="dot d-need"></i> Requiere completar Historial / Inventario</span>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <span class="flabel">Filtros</span>
+    <span class="chip on">Rango: Feb–Jul 2026 <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="chip">Rol: Todos <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="chip">Motivo: Todos <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="chip">Servicio: Todos <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="chip">Programa: Todos <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="chip">Estado: Todos <svg width="11" height="11" viewBox="0 0 12 12"><path d="M3 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>
+    <span style="font-size:11.5px;color:var(--faint);margin-left:auto">Los filtros se aplican a todo el tablero</span>
+  </div>
+
+  <!-- SECTION A: ESTADO ACTUAL -->
+  <div class="sec">
+    <div class="sec-h"><h2>1 · Estado actual de la operación</h2><span class="tag tag-live">En vivo</span></div>
+    <p class="sec-p">Lo que necesita atención hoy — pensado para revisar de un vistazo al abrir la app.</p>
+  </div>
+  <div class="grid k4">
+    <div class="card kpi accent">
+      <div class="klabel">Nuevas sin responder <span class="tag tag-live">✓</span></div>
+      <div class="kval num">3</div>
+      <div class="ksub">estado «Nueva»</div>
+    </div>
+    <div class="card kpi crit">
+      <div class="klabel">Pendientes vencidas <span class="tag tag-new">nuevo</span></div>
+      <div class="kval num">15</div>
+      <div class="ksub">fecha tentativa ya pasó y no están atendidas</div>
+    </div>
+    <div class="card kpi warnb">
+      <div class="klabel">En revisión <span class="tag tag-live">✓</span></div>
+      <div class="kval num">1</div>
+      <div class="ksub">esperando decisión</div>
+    </div>
+    <div class="card kpi">
+      <div class="klabel">Tasa de aprobación <span class="tag tag-new">nuevo</span></div>
+      <div class="kval num">92%</div>
+      <div class="ksub">11 aprobadas de 12 resueltas</div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card">
+      <div class="chart-h">Embudo de solicitudes <span class="tag tag-new">nuevo</span></div>
+      <div class="chart-cap">Dónde se acumulan las solicitudes en el proceso. Hoy hay 11 aprobadas pero 0 marcadas como «Atendida» → conviene cerrar el ciclo marcándolas al entregar.</div>
+      <div class="pipe">
+        <div class="stage"><div class="sn" style="color:var(--info)">Nueva</div><div class="sv num">3</div><span class="arrow">→</span></div>
+        <div class="stage"><div class="sn" style="color:var(--warn)">En Revisión</div><div class="sv num">1</div><span class="arrow">→</span></div>
+        <div class="stage"><div class="sn" style="color:var(--good)">Aprobada</div><div class="sv num">11</div><span class="arrow">→</span></div>
+        <div class="stage"><div class="sn" style="color:var(--muted)">Atendida</div><div class="sv num">0</div></div>
+        <div class="stage" style="background:#fff5f6;border-color:#ffdbe0"><div class="sn" style="color:var(--crit)">Rechazada</div><div class="sv num">1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION B: DEMANDA -->
+  <div class="sec">
+    <div class="sec-h"><h2>2 · Análisis de la demanda</h2><span class="tag tag-live">Con tus datos</span></div>
+    <p class="sec-p">Cómo ha venido trabajando el aula: volumen, quién solicita y para qué. Todo esto se puede construir ya.</p>
+  </div>
+
+  <div class="grid c2">
+    <div class="card">
+      <div class="chart-h">Solicitudes por mes</div>
+      <div class="chart-cap">Tendencia de demanda — útil para anticipar meses pico y planear filamento/turnos.</div>
+      <div class="cols" id="meses"></div>
+    </div>
+    <div class="card">
+      <div class="chart-h">Por rol del solicitante</div>
+      <div class="chart-cap">A quién sirve el aula. Combínalo con el filtro de fechas para ver cambios por semestre.</div>
+      <div class="donut-wrap"><div class="donut" id="d-rol"></div><div class="dlegend" id="l-rol"></div></div>
+    </div>
+  </div>
+
+  <div class="grid c2" style="margin-top:14px">
+    <div class="card">
+      <div class="chart-h">Por motivo de la solicitud <span class="tag tag-need" title="datos con duplicados">normalizar</span></div>
+      <div class="chart-cap">Para qué se usa la impresión. Cifras tras unificar variantes con tilde/typo del mismo motivo.</div>
+      <div class="bars" id="motivo"></div>
+    </div>
+    <div class="card">
+      <div class="chart-h">Por programa académico</div>
+      <div class="chart-cap">Qué carreras concentran la demanda — insumo para difundir el servicio donde falta.</div>
+      <div class="bars" id="programa"></div>
+    </div>
+  </div>
+
+  <div class="grid c2" style="margin-top:14px">
+    <div class="card">
+      <div class="chart-h">Por tipo de servicio</div>
+      <div class="chart-cap">Impresión vs. modelado — ayuda a dimensionar el tiempo de asesoría.</div>
+      <div class="donut-wrap"><div class="donut" id="d-serv"></div><div class="dlegend" id="l-serv"></div></div>
+    </div>
+    <div class="card">
+      <div class="chart-h">Top solicitantes recurrentes <span class="tag tag-new">nuevo</span></div>
+      <div class="chart-cap">Quiénes vuelven más (por correo). Identifica usuarios clave y posible uso intensivo.</div>
+      <div class="note"><span>👥</span><div>Se arma agrupando las solicitudes por <b>correo</b>. Con los datos actuales es viable de inmediato; lo dejé como ejemplo de indicador nuevo de gestión.</div></div>
+    </div>
+  </div>
+
+  <!-- SECTION C: OPERATIVO -->
+  <div class="sec">
+    <div class="sec-h"><h2>3 · Análisis operativo y de producción</h2><span class="tag tag-need">Requiere completar datos</span></div>
+    <p class="sec-p">Los indicadores más valiosos para producción. Hoy están vacíos: se activan al registrar impresora, tiempo, material y resultado en el Historial (o usar «Finalizar cama»), y al cargar el Inventario.</p>
+  </div>
+
+  <div class="grid k4">
+    <div class="card kpi muteds"><div class="klabel">Tasa de éxito <span class="tag tag-need">need</span></div><div class="kval num">—</div><div class="ksub">exitosas ÷ finalizadas · falta «Resultado»</div></div>
+    <div class="card kpi muteds"><div class="klabel">Material consumido/mes <span class="tag tag-need">need</span></div><div class="kval num">0 g</div><div class="ksub">falta cargar Inventario</div></div>
+    <div class="card kpi muteds"><div class="klabel">Desperdicio total <span class="tag tag-need">need</span></div><div class="kval num">0 g</div><div class="ksub">falta «Desperdicios (g)»</div></div>
+    <div class="card kpi muteds"><div class="klabel">Horas de impresora <span class="tag tag-need">need</span></div><div class="kval num">—</div><div class="ksub">falta «Impresora usada»</div></div>
+  </div>
+
+  <div class="grid c2" style="margin-top:14px">
+    <div class="card">
+      <div class="chart-h" style="color:var(--faint)">Producción e insumos por mes <span class="tag tag-new">nuevo</span></div>
+      <div class="chart-cap">Piezas impresas, gramos usados y % de éxito por mes — la vista global de «cómo vamos».</div>
+      <div class="note"><span>📈</span><div>Requiere que cada impresión quede registrada con <b>gramos, tiempo, material y resultado</b>. Propuesta: barras de gramos + línea de % de éxito, filtrable por rango.</div></div>
+    </div>
+    <div class="card">
+      <div class="chart-h" style="color:var(--faint)">Consumo por material y alertas de stock <span class="tag tag-new">nuevo</span></div>
+      <div class="chart-cap">Cuánto PLA/PETG/… se gasta y qué rollos están por agotarse frente a sus umbrales.</div>
+      <div class="note"><span>🧵</span><div>Requiere cargar el <b>Inventario</b> (rollos + umbrales). Ya existe la lógica de alertas por umbral; solo faltan los datos.</div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Mockup de propuesta · los números provienen de tus hojas reales al 3 jul 2026 · construido para el Aula STEAM Sonny Jiménez
+  </div>
+</div>
+
+<script>
+  var C={info:'#3b82f6',warn:'#f59e0b',good:'#10b981',crit:'#f43f5e',steam1:'#6366f1',steam2:'#a855f7',accent:'#5b53e0',neutral:'#aab1c4'};
+  var PAL=['#6366f1','#a855f7','#f59e0b','#10b981','#3b82f6','#f43f5e','#94a3b8'];
+
+  var meses=[{l:'Feb',v:3},{l:'Mar',v:1},{l:'Abr',v:3},{l:'May',v:5},{l:'Jun',v:4},{l:'Jul',v:1}];
+  var rol=[{l:'Estudiante',v:12},{l:'Profesor(a)',v:2},{l:'Contratista',v:2}];
+  var motivo=[{l:'Proyecto académico',v:6},{l:'Investigación',v:4},{l:'Proyecto personal',v:3},{l:'Asignaturas de proy.',v:2},{l:'Curso académico',v:1}];
+  var programa=[{l:'Ing. Química',v:6},{l:'(sin dato)',v:4},{l:'Ing. Mecánica',v:3},{l:'Ing. Civil',v:2},{l:'Ing. Sistemas',v:1}];
+  var serv=[{l:'Impresión 3D',v:12},{l:'Modelado + Impresión',v:2},{l:'Modelado 3D',v:2}];
+
+  // monthly columns
+  (function(){
+    var host=document.getElementById('meses'); var max=Math.max.apply(null,meses.map(function(m){return m.v}));
+    meses.forEach(function(m){
+      var c=document.createElement('div'); c.className='col';
+      c.innerHTML='<div class="cval num">'+m.v+'</div><div class="cbar"></div><div class="cl">'+m.l+'</div>';
+      host.appendChild(c);
+      requestAnimationFrame(function(){ setTimeout(function(){ c.querySelector('.cbar').style.height=(m.v/max*100)+'%'; },40); });
+    });
+  })();
+
+  // horizontal bars
+  function bars(id,data,color){
+    var host=document.getElementById(id); var max=Math.max.apply(null,data.map(function(d){return d.v}));
+    data.forEach(function(d,i){
+      var row=document.createElement('div'); row.className='bar-row';
+      var col=color||PAL[i%PAL.length];
+      row.innerHTML='<div class="bl" title="'+d.l+'">'+d.l+'</div><div class="bar-track"><div class="bar-fill" style="background:'+col+'"></div></div><div class="bv num">'+d.v+'</div>';
+      host.appendChild(row);
+      requestAnimationFrame(function(){ setTimeout(function(){ row.querySelector('.bar-fill').style.width=(d.v/max*100)+'%'; },60); });
+    });
+  }
+  bars('motivo',motivo,C.steam1);
+  bars('programa',programa,C.accent);
+
+  // donut
+  function donut(svgId,legId,data){
+    var total=data.reduce(function(a,d){return a+d.v},0);
+    var r=52,cx=64,cy=64,circ=2*Math.PI*r,off=0;
+    var svg='<svg width="128" height="128" viewBox="0 0 128 128">';
+    data.forEach(function(d,i){
+      var frac=d.v/total, len=frac*circ, col=PAL[i%PAL.length];
+      svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+col+'" stroke-width="20" '+
+           'stroke-dasharray="'+len+' '+(circ-len)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 '+cx+' '+cy+')"/>';
+      off+=len;
+    });
+    svg+='<text x="64" y="60" text-anchor="middle" font-size="22" font-weight="800" fill="#1f2440">'+total+'</text>';
+    svg+='<text x="64" y="76" text-anchor="middle" font-size="10" fill="#9aa1b2">total</text></svg>';
+    document.getElementById(svgId).innerHTML=svg;
+    var leg=document.getElementById(legId); var h='';
+    data.forEach(function(d,i){
+      h+='<div class="dr"><span class="dn"><i class="dot" style="background:'+PAL[i%PAL.length]+'"></i>'+d.l+'</span><span class="dv num">'+d.v+'</span></div>';
+    });
+    leg.innerHTML=h;
+  }
+  donut('d-rol','l-rol',rol);
+  donut('d-serv','l-serv',serv);
+</script>
+
+</body>
+</html>
