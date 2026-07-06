@@ -5,18 +5,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function Modal({
-  abierto, onCerrar, titulo, children, ancho = 'max-w-2xl',
+  abierto, onCerrar, titulo, children, ancho = 'max-w-2xl', centrado = false,
 }: {
   abierto: boolean;
   onCerrar: () => void;
   titulo: string;
   children: React.ReactNode;
   ancho?: string;
+  /** Centra el diálogo vertical y horizontalmente (por defecto se ancla arriba) */
+  centrado?: boolean;
 }) {
   if (!abierto) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm ${centrado ? 'items-center' : 'items-start'}`}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCerrar(); }}
     >
       <div className={`my-8 w-full ${ancho} rounded-2xl bg-white shadow-2xl`}>
@@ -29,6 +31,41 @@ export function Modal({
         <div className="p-6">{children}</div>
       </div>
     </div>
+  );
+}
+
+/** Diálogo de confirmación centrado, con el mismo estilo y paleta del aplicativo. */
+export function ModalConfirmar({
+  abierto, titulo, icono, confirmarTexto = 'Aceptar', cancelarTexto = 'Cancelar',
+  tono = 'primary', onConfirmar, onCancelar, children,
+}: {
+  abierto: boolean;
+  titulo: string;
+  icono?: React.ReactNode;
+  confirmarTexto?: string;
+  cancelarTexto?: string;
+  tono?: 'primary' | 'danger';
+  onConfirmar: () => void;
+  onCancelar: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Modal abierto={abierto} onCerrar={onCancelar} titulo={titulo} ancho="max-w-md" centrado>
+      <div className="space-y-6">
+        <div className="flex gap-4">
+          {icono != null && (
+            <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">
+              {icono}
+            </div>
+          )}
+          <div className="pt-0.5 text-sm leading-relaxed text-slate-600">{children}</div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onCancelar}>{cancelarTexto}</button>
+          <button className={tono === 'danger' ? 'btn-danger' : 'btn-primary'} onClick={onConfirmar} autoFocus>{confirmarTexto}</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

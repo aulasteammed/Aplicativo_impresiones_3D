@@ -1,4 +1,4 @@
-import { EstadoSolicitud, Filamento, UmbralAlerta, AlertaUmbral } from './types';
+import { EstadoSolicitud, Filamento, UmbralAlerta, AlertaUmbral, Impresora, Mantenimiento, AlertaMantenimiento } from './types';
 
 /** Normaliza el estado leído del Sheets al estándar de la app.
  *  La hoja histórica usa "Aceptada"; el estándar es "Aprobada". Vacío = "Nueva". */
@@ -154,6 +154,87 @@ export function calcularAlertasAgregadas(filamentos: Filamento[], umbrales: Umbr
       out.push({ variable: u.variable, valor: u.valor, total, umbralGramos: u.umbralGramos, rollos: coincidentes.length, estado: 'debajo' });
     } else if (total <= u.umbralGramos * (1 + MARGEN_PROXIMIDAD_UMBRAL)) {
       out.push({ variable: u.variable, valor: u.valor, total, umbralGramos: u.umbralGramos, rollos: coincidentes.length, estado: 'cerca' });
+    }
+  }
+  return out;
+}
+
+// Catálogos de las categorías CERRADAS del dashboard (opción fija en el Form).
+// Sirven para que ningún valor de otra categoría se cuele en un filtro o gráfico,
+// y para colapsar duplicados por mayúsculas/tildes.
+export const CATALOGOS_DASHBOARD: Record<string, string[]> = {
+  rol: ['Estudiante', 'Profesor(a)', 'Egresado(a)', 'Contratista'],
+  motivo: ['Asignaturas de proyectos en ingeniería', 'Investigación', 'Proyecto académico', 'Proyecto personal', 'Curso académico'],
+  servicio: ['Impresión 3D', 'Modelado 3D', 'Modelado 3D e Impresión 3D'],
+};
+
+const esPlaceholderCat = (v: string) => /^\(.*\)$/.test(v.trim()); // "(sin dato)", "(sin programa)"
+
+/** Valor canónico de `valor` para la categoría `dim`, o null si no corresponde a
+ *  esa categoría (colapsa mayúsculas/tildes y descarta valores de otra categoría). */
+export function canonCategoria(dim: string, valor: string | null | undefined): string | null {
+  if (valor == null || valor === '') return null;
+  const v = String(valor);
+  if (esPlaceholderCat(v)) return v.trim();
+  const propio = CATALOGOS_DASHBOARD[dim];
+  if (propio) {
+    const hit = propio.find((c) => normalizarTexto(c) === normalizarTexto(v));
+    if (hit) return hit; // dentro de su catálogo → forma canónica
+  }
+  for (const otra in CATALOGOS_DASHBOARD) {
+    if (otra !== dim && CATALOGOS_DASHBOARD[otra].some((c) => normalizarTexto(c) === normalizarTexto(v))) return null;
+  }
+  return propio ? null : v.trim(); // cerrada sin match → descarta; abierta (programa/mes) → conserva
+}
+
+/** Formatea un monto en pesos colombianos (COP), sin decimales: "$ 85.000". */
+export function formatCOP(valor: number | null | undefined): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(num(valor));
+}
+
+/** Diferencia en días enteros entre dos fechas YYYY-MM-DD (b - a). */
+function diasEntre(aISO: string, bISO: string): number {
+  const a = new Date(aISO + 'T00:00:00Z').getTime();
+  const b = new Date(bISO + 'T00:00:00Z').getTime();
+  if (isNaN(a) || isNaN(b)) return NaN;
+  return Math.round((b - a) / 86400000);
+}
+
+/** Días de antelación con que se avisa un mantenimiento programado por fecha. */
+export const DIAS_AVISO_MANTENIMIENTO = 7;
+
+/** Alertas de mantenimiento por impresora, derivadas de la PROGRAMACIÓN del último
+ *  mantenimiento de cada equipo (una fecha específica o cada N horas acumuladas).
+ *  - 'horas': avisa cuando las horas desde el último mantenimiento alcanzan el
+ *    intervalo (vencido) o están dentro del 10% (próximo).
+ *  - 'fecha': avisa cuando la fecha programada ya pasó (vencido) o falta poco (próximo). */
+export function calcularAlertasMantenimiento(
+  impresoras: Impresora[], mantenimientos: Mantenimiento[], hoyStr: string,
+): AlertaMantenimiento[] {
+  const out: AlertaMantenimiento[] = [];
+  for (const imp of impresoras) {
+    // Último mantenimiento de esta impresora con una programación activa.
+    const ult = mantenimientos
+      .filter((m) => m.impresoraId === imp.id && m.programacion && m.programacion !== 'ninguna')
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+    if (!ult) continue;
+
+    if (ult.programacion === 'horas' && ult.cadaHoras && ult.cadaHoras > 0) {
+      const desde = Math.max(0, Math.round((imp.horasAcumuladas - (ult.horasBase ?? 0)) * 10) / 10);
+      if (desde >= ult.cadaHoras) {
+        out.push({ impresoraId: imp.id, nombre: imp.nombre, motivo: 'horas', estado: 'vencido', horasAcumuladas: imp.horasAcumuladas, horasDesde: desde, cadaHoras: ult.cadaHoras });
+      } else if (desde >= ult.cadaHoras * (1 - MARGEN_PROXIMIDAD_UMBRAL)) {
+        out.push({ impresoraId: imp.id, nombre: imp.nombre, motivo: 'horas', estado: 'proximo', horasAcumuladas: imp.horasAcumuladas, horasDesde: desde, cadaHoras: ult.cadaHoras });
+      }
+    } else if (ult.programacion === 'fecha' && ult.proximaFecha) {
+      const dias = diasEntre(hoyStr, ult.proximaFecha);
+      if (!isNaN(dias)) {
+        if (dias <= 0) {
+          out.push({ impresoraId: imp.id, nombre: imp.nombre, motivo: 'fecha', estado: 'vencido', horasAcumuladas: imp.horasAcumuladas, proximaFecha: ult.proximaFecha });
+        } else if (dias <= DIAS_AVISO_MANTENIMIENTO) {
+          out.push({ impresoraId: imp.id, nombre: imp.nombre, motivo: 'fecha', estado: 'proximo', horasAcumuladas: imp.horasAcumuladas, proximaFecha: ult.proximaFecha });
+        }
+      }
     }
   }
   return out;

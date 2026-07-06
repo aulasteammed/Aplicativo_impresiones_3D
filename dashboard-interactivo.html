@@ -61,6 +61,21 @@
   .kpi.crit{background:linear-gradient(180deg,#fff,#fff5f6);border-color:#ffdbe0}.kpi.crit .kv{color:var(--crit)}
   .kpi.warnb{background:linear-gradient(180deg,#fff,#fffdf3);border-color:#ffedc4}
   .kpi.good .kv{color:var(--good)}
+  /* sub-encabezado dentro de una sección */
+  .subhdr{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin:24px 0 11px;display:flex;align-items:center;gap:8px}
+  .subhdr::before{content:"";width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,var(--steam1),var(--steam2))}
+  .tag-crit{background:#fef2f2;color:#b91c1c}
+  /* listas (camas en curso, impresoras, mantenimientos, stock) */
+  .lrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2);font-size:13px}
+  .lrow:last-child{border-bottom:0}
+  .lrow .ln{flex:1;min-width:0}
+  .lrow .ln b{color:#3c435a;font-weight:700}
+  .lrow .lsub{font-size:11px;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lval{font-weight:800;font-variant-numeric:tabular-nums;color:#3c435a;text-align:right;white-space:nowrap;font-size:12.5px}
+  .pill{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .p-ok{background:#e7f7f0;color:#0b7a53}.p-warn{background:#fff4e0;color:#9a5b00}.p-crit{background:#fef2f2;color:#b3261e}.p-mut{background:#eef0f4;color:#7a8397}
+  .mini-bar{height:6px;background:var(--line2);border-radius:4px;overflow:hidden;margin-top:6px;max-width:220px}
+  .mini-bar>i{display:block;height:100%;border-radius:4px;transition:width .6s cubic-bezier(.22,1,.36,1)}
   /* charts */
   .chart-h{font-size:13.5px;font-weight:700;margin-bottom:2px}
   .chart-cap{font-size:11.5px;color:var(--faint);margin-bottom:14px}
@@ -115,6 +130,7 @@
   <!-- 1 · ESTADO ACTUAL -->
   <div class="sec"><div class="sec-h"><h2>1 · Estado actual de la operación</h2><span class="tag tag-live">En vivo</span></div>
     <p class="sec-p">Lo que necesita atención — la primera lectura al abrir la app.</p></div>
+  <div class="subhdr">Solicitudes de servicio</div>
   <div class="grid k4" id="kpisEstado"></div>
   <div class="grid" style="margin-top:14px"><div class="card">
     <div class="chart-h">Embudo de solicitudes</div>
@@ -122,7 +138,13 @@
     <div class="pipe" id="funnel"></div>
   </div></div>
 
-  <div id="alertaStock"></div>
+  <div class="subhdr">Camas de impresión</div>
+  <div class="grid k4" id="kpisCamas"></div>
+  <div class="grid" style="margin-top:14px"><div class="card">
+    <div class="chart-h">Camas en curso ahora</div>
+    <div class="chart-cap">Lo que está montado en las camas en este momento — activas y en pausa.</div>
+    <div id="camasEnCurso"></div>
+  </div></div>
 
   <!-- 2 · DEMANDA -->
   <div class="sec"><div class="sec-h"><h2>2 · Análisis de la demanda</h2></div>
@@ -153,6 +175,18 @@
     <div class="card"><div class="chart-h">Impresiones por mes</div><div class="chart-cap">Volumen de producción en el tiempo.</div><div class="cols" id="mesesProd"></div></div>
   </div>
 
+  <!-- 4 · MANTENIMIENTO Y EQUIPOS -->
+  <div class="sec"><div class="sec-h"><h2>4 · Mantenimiento y equipos</h2><span class="tag tag-crit">Delicado</span></div>
+    <p class="sec-p">Solo lo crítico: equipos que requieren atención, horas sin mantenimiento y stock por reponer.</p></div>
+  <div class="grid k4" id="kpisMant"></div>
+  <div class="grid c2" style="margin-top:14px">
+    <div class="card"><div class="chart-h">Impresoras · estado y horas sin mantenimiento</div><div class="chart-cap">Horas desde el último mantenimiento frente a su umbral.</div><div id="impresorasMant"></div></div>
+    <div class="card"><div class="chart-h">Stock crítico de filamento</div><div class="chart-cap">Rollos en o bajo su umbral de reposición.</div><div id="alertaStock"></div></div>
+  </div>
+  <div class="grid" style="margin-top:14px"><div class="card">
+    <div class="chart-h">Últimos mantenimientos</div><div class="chart-cap">Historial reciente de intervenciones en los equipos.</div><div id="mantList"></div>
+  </div></div>
+
   <div class="foot">Dashboard interactivo · datos de tus Google Sheets · Aula STEAM Sonny Jiménez</div>
 </div>
 
@@ -161,19 +195,67 @@ const DATA = {"generado":"2026-07-03","solicitudes":[{"mes":"2026-02","fechaTent
 const PAL=['#6366f1','#a855f7','#f59e0b','#10b981','#3b82f6','#f43f5e','#14b8a6','#eab308'];
 const CEST={'Nueva':'#3b82f6','En Revisión':'#f59e0b','Aprobada':'#10b981','Rechazada':'#f43f5e','Atendida':'#94a3b8'};
 const MES={'01':'ene','02':'feb','03':'mar','04':'abr','05':'may','06':'jun','07':'jul','08':'ago','09':'sep','10':'oct','11':'nov','12':'dic'};
-const mesLbl=(m)=>{const[y,mm]=m.split('-');return (MES[mm]||mm)+' '+y.slice(2);};
+const MES_LARGO={'01':'Enero','02':'Febrero','03':'Marzo','04':'Abril','05':'Mayo','06':'Junio','07':'Julio','08':'Agosto','09':'Septiembre','10':'Octubre','11':'Noviembre','12':'Diciembre'};
+// nombre de mes + año de 4 dígitos, para no confundir el año con un día ("Febrero 2026")
+const mesLbl=(m)=>{const[y,mm]=m.split('-');return (MES_LARGO[mm]||mm)+' '+y;};
 const mesMY=(m)=>{const[y,mm]=m.split('-');return {m:(MES[mm]||mm),y};};
 
 const DIMS=[['mes','Mes'],['rol','Rol'],['programa','Programa'],['motivo','Motivo'],['servicio','Servicio']];
 const state={filtros:{}};
 
-const uniq=(d)=>{const s=new Set();DATA.solicitudes.forEach(r=>s.add(r[d]));DATA.historial.forEach(r=>s.add(r[d]));let a=[...s].filter(x=>x!=null&&x!=='');d==='mes'?a.sort():a.sort((x,y)=>String(x).localeCompare(String(y),'es'));return a;};
-const pasa=(r)=>{for(const d in state.filtros){const s=state.filtros[d];if(s&&s.size&&!s.has(r[d]))return false;}return true;};
+// Catálogos válidos de las categorías cerradas (las que en el Form son de opción
+// fija). Sirven para que NINGÚN valor de otra categoría se cuele en un filtro
+// aunque el dato venga sucio, y para colapsar duplicados por mayúsculas/tildes.
+const CATALOGOS={
+  rol:['Estudiante','Profesor(a)','Egresado(a)','Contratista'],
+  motivo:['Asignaturas de proyectos en ingeniería','Investigación','Proyecto académico','Proyecto personal','Curso académico'],
+  servicio:['Impresión 3D','Modelado 3D','Modelado 3D e Impresión 3D'],
+};
+const normTxt=(s)=>String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+const esPlaceholder=(v)=>/^\(.*\)$/.test(String(v).trim()); // "(sin dato)", "(sin programa)": marcador válido
+// Valor canónico de v para la dimensión d, o null si no corresponde a esa categoría.
+function canonValor(d,v){
+  if(v==null||v==='')return null;
+  if(esPlaceholder(v))return String(v).trim();
+  const propio=CATALOGOS[d];
+  if(propio){
+    const hit=propio.find(c=>normTxt(c)===normTxt(v));
+    if(hit)return hit;                 // dentro de su catálogo → forma canónica
+  }
+  for(const dim in CATALOGOS){         // ¿pertenece a OTRA categoría? → fuera de lugar, se descarta
+    if(dim!==d&&CATALOGOS[dim].some(c=>normTxt(c)===normTxt(v)))return null;
+  }
+  return propio?null:String(v).trim(); // dimensión cerrada sin match → descarta; abierta (programa/mes) → conserva
+}
+const uniq=(d)=>{const m=new Map();const add=(raw)=>{const c=canonValor(d,raw);if(c!=null)m.set(normTxt(c),c);};DATA.solicitudes.forEach(r=>add(r[d]));DATA.historial.forEach(r=>add(r[d]));const a=[...m.values()];d==='mes'?a.sort():a.sort((x,y)=>String(x).localeCompare(String(y),'es'));return a;};
+const pasa=(r)=>{for(const d in state.filtros){const s=state.filtros[d];if(s&&s.size&&!s.has(canonValor(d,r[d])))return false;}return true;};
 const fSol=()=>DATA.solicitudes.filter(pasa);
 const fHist=()=>DATA.historial.filter(pasa);
-const countBy=(arr,k)=>{const m={};arr.forEach(r=>{const v=r[k];m[v]=(m[v]||0)+1;});return Object.entries(m).map(([l,v])=>({l,v}));};
-const sumBy=(arr,k,f)=>{const m={};arr.forEach(r=>{const g=r[k];m[g]=(m[g]||0)+(+r[f]||0);});return Object.entries(m).map(([l,v])=>({l,v}));};
+// countBy/sumBy agrupan por el valor CANÓNICO de la categoría (colapsa duplicados
+// por mayúsculas/tildes y descarta valores que no pertenecen a la categoría).
+const countBy=(arr,k)=>{const m={};arr.forEach(r=>{const v=canonValor(k,r[k]);if(v==null)return;m[v]=(m[v]||0)+1;});return Object.entries(m).map(([l,v])=>({l,v}));};
+const sumBy=(arr,k,f)=>{const m={};arr.forEach(r=>{const g=canonValor(k,r[k]);if(g==null)return;m[g]=(m[g]||0)+(+r[f]||0);});return Object.entries(m).map(([l,v])=>({l,v}));};
 const nf=(n)=>Math.round(n).toLocaleString('es-CO');
+
+/* Equipos y mantenimiento — en la app real vienen de la hoja de Inventario
+   (pestañas Impresoras y Mantenimiento). Aquí, datos de ejemplo para el diseño.
+   horasAcum = horas acumuladas del equipo · horasUltimoMant = horas que tenía en
+   su último mantenimiento · umbralHoras = tope recomendado antes de intervenir. */
+const IMPRESORAS=[
+  {nombre:'Sonny',modelo:'Bambu Lab X1 Carbon',estado:'Operativa',horasAcum:164},
+  {nombre:'Freddie',modelo:'Bambu Lab P1S',estado:'Operativa',horasAcum:159.7},
+  {nombre:'Bono',modelo:'Creality K1 Max',estado:'Operativa',horasAcum:115.8},
+  {nombre:'Cher',modelo:'Prusa MK4',estado:'Mantenimiento',horasAcum:97.4},
+];
+// Cada registro puede programar el PRÓXIMO mantenimiento: por 'fecha' (proximaFecha)
+// o 'horas' (cada N horas de uso desde horasBase). costo en COP. Igual que en la app.
+const MANTENIMIENTOS=[
+  {fecha:'2026-06-28',impresora:'Cher',tipo:'preventivo',descripcion:'Cambio de boquilla y nivelación de cama',responsable:'Monitor Aula STEAM',costo:0,programacion:'horas',cadaHoras:120,horasBase:90},
+  {fecha:'2026-05-20',impresora:'Sonny',tipo:'preventivo',descripcion:'Limpieza de extrusor y engrase de ejes',responsable:'Monitor Aula STEAM',costo:45000,programacion:'horas',cadaHoras:130,horasBase:150},
+  {fecha:'2026-04-10',impresora:'Freddie',tipo:'correctivo',descripcion:'Reemplazo del sensor de filamento',responsable:'Técnico externo',costo:185000,programacion:'fecha',proximaFecha:'2026-07-01'},
+  {fecha:'2026-03-15',impresora:'Freddie',tipo:'preventivo',descripcion:'Lubricación y ajuste de correas',responsable:'Monitor Aula STEAM',costo:30000,programacion:'horas',cadaHoras:120,horasBase:35},
+  {fecha:'2026-02-10',impresora:'Bono',tipo:'preventivo',descripcion:'Puesta a punto y calibración inicial',responsable:'Monitor Aula STEAM',costo:0,programacion:'horas',cadaHoras:100,horasBase:0},
+];
 
 /* ---- filtros UI ---- */
 function closeAll(){document.querySelectorAll('.md-pop').forEach(p=>p.classList.remove('open'));}
@@ -218,10 +300,61 @@ function buildFiltros(){
 function renderAlertas(){
   const fil=(DATA.filamentos||[]).map(f=>({...f,ratio:f.umbral?f.gramos/f.umbral:9})).filter(f=>f.gramos<=f.umbral*1.2).sort((a,b)=>a.ratio-b.ratio);
   const box=document.getElementById('alertaStock');
-  if(!fil.length){box.innerHTML='';return;}
-  const nCrit=fil.filter(f=>f.gramos<=f.umbral).length;
-  box.innerHTML=`<div class="alerta"><div class="alerta-h">🧵 Stock crítico de filamento — ${nCrit} rollo(s) en o bajo su umbral${fil.length>nCrit?` · ${fil.length-nCrit} por vigilar`:''}</div><div class="alerta-list">`+
-    fil.slice(0,8).map(f=>`<span class="chip-al ${f.gramos<=f.umbral?'cr':''}">${f.id} · ${f.tipo} ${f.color} — <b>${Math.round(f.gramos)} g</b> / umbral ${f.umbral} g</span>`).join('')+'</div></div>';
+  if(!box)return;
+  if(!fil.length){box.innerHTML='<p class="empty">✓ Sin rollos por debajo del umbral.</p>';return;}
+  box.innerHTML=fil.slice(0,8).map(f=>{
+    const crit=f.gramos<=f.umbral;
+    return `<div class="lrow"><div class="ln"><b>${f.id} · ${f.tipo} ${f.color}</b><div class="lsub">${f.marca} · umbral ${f.umbral} g</div></div><span class="pill ${crit?'p-crit':'p-warn'}">${crit?'En umbral':'Por vigilar'}</span><span class="lval">${Math.round(f.gramos)} g</span></div>`;
+  }).join('');
+}
+
+// Programación efectiva de una impresora = la del último mantenimiento con programación.
+function planImpresora(nombre){
+  return MANTENIMIENTOS
+    .filter(m=>m.impresora===nombre && m.programacion && m.programacion!=='ninguna')
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha))[0]||null;
+}
+function diasEntre(a,b){return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000);}
+// Deriva la alerta de mantenimiento desde la programación (mismo criterio que la app).
+function evaluarImp(i){
+  const p=planImpresora(i.nombre);
+  let alerta=null,ratio=0,valor='—',sub='sin mantenimiento programado';
+  if(p&&p.programacion==='horas'&&p.cadaHoras>0){
+    const desde=Math.max(0,Math.round((i.horasAcum-(p.horasBase||0))*10)/10);
+    ratio=desde/p.cadaHoras;
+    if(desde>=p.cadaHoras)alerta='vencido';else if(desde>=p.cadaHoras*0.9)alerta='proximo';
+    valor=`${desde} / ${p.cadaHoras} h`;sub=`cada ${p.cadaHoras} h de uso`;
+  }else if(p&&p.programacion==='fecha'&&p.proximaFecha){
+    const d=diasEntre(DATA.generado,p.proximaFecha);
+    if(d<=0)alerta='vencido';else if(d<=7)alerta='proximo';
+    ratio=d<=0?1:(d<=7?0.9:0.45);
+    valor=p.proximaFecha;sub=d<=0?`vencido hace ${-d} d`:`en ${d} d`;
+  }
+  return {i,p,alerta,ratio,valor,sub};
+}
+function renderMantenimiento(){
+  const cop=(n)=>n?('$'+Math.round(n).toLocaleString('es-CO')+' COP'):'—';
+  const evals=IMPRESORAS.map(evaluarImp);
+  const oper=IMPRESORAS.filter(i=>i.estado==='Operativa').length;
+  const noDisp=IMPRESORAS.filter(i=>i.estado!=='Operativa').length;
+  const req=evals.filter(e=>e.alerta==='vencido').length;
+  const prox=evals.filter(e=>e.alerta==='proximo').length;
+  const rollos=(DATA.filamentos||[]).filter(f=>f.gramos<=f.umbral).length;
+  kpis('kpisMant',[
+    {l:'Impresoras operativas',v:`${oper}/${IMPRESORAS.length}`,s:'listas para imprimir',cls:oper===IMPRESORAS.length?'good':''},
+    {l:'No disponibles',v:noDisp,s:'en mant. o fuera de servicio',cls:noDisp?'warnb':''},
+    {l:'Requieren mantenimiento',v:req,s:prox?`+${prox} próximo(s)`:'según lo programado',cls:req?'crit':'good'},
+    {l:'Rollos en umbral',v:rollos,s:'stock por reponer',cls:rollos?'crit':'good'},
+  ]);
+  const EST_PILL={'Operativa':'p-ok','Mantenimiento':'p-warn','Fuera de servicio':'p-crit'};
+  document.getElementById('impresorasMant').innerHTML=evals.sort((a,b)=>b.ratio-a.ratio).map(e=>{
+    const i=e.i,pct=Math.min(100,Math.round(e.ratio*100));
+    const col=e.alerta==='vencido'?'#f43f5e':e.alerta==='proximo'?'#f59e0b':'#10b981';
+    const badge=e.alerta==='vencido'?' <span class="pill p-crit">⚠ Requiere mant.</span>':e.alerta==='proximo'?' <span class="pill p-warn">⏰ Próximo</span>':'';
+    return `<div class="lrow"><div class="ln"><b>${i.nombre}</b> <span class="pill ${EST_PILL[i.estado]||'p-mut'}">${i.estado}</span>${badge}<div class="lsub">${i.modelo} · ${i.horasAcum} h acum · ${e.sub}</div><div class="mini-bar"><i style="width:${pct}%;background:${col}"></i></div></div><span class="lval">${e.valor}</span></div>`;
+  }).join('');
+  const TIPO_PILL={'preventivo':'p-ok','correctivo':'p-warn','consumible':'p-mut','repuesto':'p-mut'};
+  document.getElementById('mantList').innerHTML=MANTENIMIENTOS.slice(0,6).map(m=>`<div class="lrow"><span class="pill ${TIPO_PILL[m.tipo]||'p-mut'}">${m.tipo}</span><div class="ln"><b>${m.impresora}</b> — ${m.descripcion}<div class="lsub">${m.responsable} · ${cop(m.costo)}</div></div><span class="lval">${m.fecha}</span></div>`).join('')||'<p class="empty">Sin mantenimientos registrados.</p>';
 }
 
 /* ---- chart helpers ---- */
@@ -272,6 +405,21 @@ function render(){
   // funnel
   const orden=['Nueva','En Revisión','Aprobada','Atendida','Rechazada'];
   document.getElementById('funnel').innerHTML=orden.map((e,i)=>`<div class="stage" ${e==='Rechazada'?'style="background:#fff5f6;border-color:#ffdbe0"':''}><div class="sn" style="color:${CEST[e]}">${e}</div><div class="sv num">${est(e)}</div>${i<orden.length-1?'<span class="arrow">→</span>':''}</div>`).join('');
+  // camas de impresión (estado actual de las camas)
+  const camActivas=hist.filter(h=>h.estado==='Activa');
+  const camPausa=hist.filter(h=>h.estado==='En pausa');
+  const camCurso=camActivas.concat(camPausa);
+  const gCurso=camCurso.reduce((a,h)=>a+(+h.gramos||0),0);
+  const hCurso=camCurso.reduce((a,h)=>a+(+h.horas||0),0);
+  kpis('kpisCamas',[
+    {l:'Camas activas',v:camActivas.length,s:'imprimiendo ahora',cls:'acc'},
+    {l:'En pausa',v:camPausa.length,s:'requieren decisión',cls:camPausa.length?'warnb':''},
+    {l:'Material en curso',v:nf(gCurso)+' g',s:`${camCurso.length} camas sin finalizar`},
+    {l:'Horas en curso',v:(Math.round(hCurso*10)/10).toLocaleString('es-CO')+' h',s:'carga activa estimada'},
+  ]);
+  const CAMA_PILL={'Activa':'p-ok','En pausa':'p-warn'};
+  const camLista=camCurso.slice().sort((a,b)=>(+b.horas||0)-(+a.horas||0)).slice(0,8);
+  document.getElementById('camasEnCurso').innerHTML=camLista.map(h=>`<div class="lrow"><span class="pill ${CAMA_PILL[h.estado]||'p-mut'}">${h.estado}</span><div class="ln"><b>${h.nombre}</b><div class="lsub">${h.impresora==='(sin dato)'?'Impresora sin asignar':h.impresora} · ${h.material==='(sin dato)'?'material sin dato':h.material}</div></div><span class="lval">${h.gramos?nf(h.gramos)+' g':'—'}${h.horas?` · ${Math.round(h.horas*10)/10} h`:''}</span></div>`).join('')||'<p class="empty">Sin camas activas o en pausa con estos filtros.</p>';
   // demanda
   const porMes=(arr)=>uniq('mes').map(m=>{const p=mesMY(m);return {m:p.m,y:p.y,v:arr.filter(r=>r.mes===m).length};});
   cols('meses',porMes(sol));
@@ -299,7 +447,7 @@ function render(){
 }
 
 document.getElementById('stamp').textContent=`${DATA.solicitudes.length} solicitudes · ${DATA.historial.length} impresiones`;
-buildFiltros();renderAlertas();render();
+buildFiltros();renderAlertas();renderMantenimiento();render();
 </script>
 </body>
 </html>

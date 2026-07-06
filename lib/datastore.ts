@@ -9,8 +9,9 @@ import {
   Solicitud, Proyecto, RegistroHistorial, EstadoSolicitud, EstadoProyecto,
   Filamento, MovimientoInventario, Impresora, Mantenimiento,
   ItemProyecto, DashboardData, AlertaStock, ResultadoImpresion, UmbralAlerta,
+  DatosDashboard, SolicitudDash, HistorialDash, FilamentoDash,
 } from './types';
-import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein, calcularAlertasAgregadas } from './util';
+import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein, calcularAlertasAgregadas, calcularAlertasMantenimiento } from './util';
 import { agruparProyectos } from './google/sheets';
 
 function backend() {
@@ -303,7 +304,46 @@ export async function getMantenimientos(): Promise<Mantenimiento[]> {
 }
 
 export async function crearMantenimiento(m: Mantenimiento): Promise<void> {
-  await backend().registrarMantenimiento(m);
+  const b = backend();
+  const mant: Mantenimiento = { ...m };
+  // Normaliza según el tipo de programación del próximo mantenimiento.
+  if (mant.programacion === 'horas') {
+    mant.proximaFecha = '';
+    // Captura las horas actuales de la impresora como punto de partida del intervalo.
+    if (mant.horasBase == null) {
+      const imp = (await b.getImpresoras()).find((i) => i.id === mant.impresoraId);
+      mant.horasBase = imp ? imp.horasAcumuladas : 0;
+    }
+  } else if (mant.programacion === 'fecha') {
+    mant.cadaHoras = undefined;
+    mant.horasBase = undefined;
+  } else {
+    mant.programacion = 'ninguna';
+    mant.proximaFecha = '';
+    mant.cadaHoras = undefined;
+    mant.horasBase = undefined;
+  }
+  await b.registrarMantenimiento(mant);
+}
+
+/** Edita un mantenimiento existente. NO modifica la "Horas base": el backend
+ *  preserva la del registro original (no se puede editar ni agregar desde aquí). */
+export async function actualizarMantenimiento(m: Mantenimiento): Promise<void> {
+  const mant: Mantenimiento = { ...m };
+  if (mant.programacion === 'horas') {
+    mant.proximaFecha = '';
+  } else if (mant.programacion === 'fecha') {
+    mant.cadaHoras = undefined;
+  } else {
+    mant.programacion = 'ninguna';
+    mant.proximaFecha = '';
+    mant.cadaHoras = undefined;
+  }
+  await backend().actualizarMantenimiento(mant);
+}
+
+export async function eliminarMantenimiento(fila: number): Promise<void> {
+  await backend().eliminarMantenimiento(fila);
 }
 
 /** Valor del filamento para la variable de una regla de umbral */
@@ -398,12 +438,14 @@ export async function eliminarUmbral(id: string): Promise<void> {
 // --- Dashboard ---------------------------------------------------------------
 
 export async function getDashboard(): Promise<DashboardData> {
-  const [solicitudes, historial, filamentos, movimientos, umbrales] = await Promise.all([
+  const [solicitudes, historial, filamentos, movimientos, umbrales, impresoras, mantenimientos] = await Promise.all([
     backend().getSolicitudes(),
     backend().getHistorial(),
     backend().getFilamentos(),
     backend().getMovimientos(),
     backend().getUmbrales(),
+    backend().getImpresoras(),
+    backend().getMantenimientos(),
   ]);
   const proyectos = agruparProyectos(historial);
 
@@ -438,9 +480,92 @@ export async function getDashboard(): Promise<DashboardData> {
       impresora, horas: Math.round(horas * 10) / 10,
     })),
     alertasUmbral: calcularAlertasAgregadas(filamentos, umbrales),
+    alertasMantenimiento: calcularAlertasMantenimiento(impresoras, mantenimientos, hoyISO()),
     proximasEntregas: pendientes.slice(-8).reverse().map((s) => ({
       nombre: s.nombre, pieza: s.descripcionPieza.slice(0, 80), fecha: s.fechaTentativa, estado: s.estado,
     })),
     esDemo: esModoDemo(),
+  };
+}
+
+// --- Datos crudos para el Dashboard interactivo (filtrable en el cliente) -----
+
+/** "DD/MM/YYYY …" o "YYYY-MM-…" → "YYYY-MM" (vacío si no se reconoce) */
+function mesDeFecha(fecha: string): string {
+  const s = String(fecha ?? '').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}`;
+  m = s.match(/^(\d{4})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  return '';
+}
+
+/** "DD/MM/YYYY" o "YYYY-MM-DD" → "YYYY-MM-DD" (vacío si no se reconoce) */
+function fechaAISO(fecha: string): string {
+  const s = String(fecha ?? '').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return '';
+}
+
+/** Umbral efectivo de un rollo = el mayor umbral de las reglas que le aplican */
+function umbralDeFilamento(f: Filamento, umbrales: UmbralAlerta[]): number {
+  const valorVar = (v: UmbralAlerta['variable']) => (v === 'color' ? f.color : v === 'marca' ? f.marca : String(f.tipo));
+  const aplican = umbrales.filter((u) => normalizarTexto(valorVar(u.variable)) === normalizarTexto(u.valor));
+  return aplican.length ? Math.max(...aplican.map((u) => u.umbralGramos)) : 0;
+}
+
+/** Datasets crudos (solicitudes, historial, filamentos, impresoras, mantenimientos)
+ *  con la forma que consume el Dashboard interactivo; el filtrado se hace en el cliente. */
+export async function getDatosDashboard(): Promise<DatosDashboard> {
+  const b = backend();
+  const [solicitudes, historial, filamentos, umbrales, impresoras, mantenimientos] = await Promise.all([
+    b.getSolicitudes(), b.getHistorial(), b.getFilamentos(), b.getUmbrales(), b.getImpresoras(), b.getMantenimientos(),
+  ]);
+  const hoy = hoyISO();
+  const pendiente = (e: string) => e === 'Nueva' || e === 'En Revisión' || e === 'Aprobada';
+
+  const sol: SolicitudDash[] = solicitudes.map((s) => {
+    const iso = fechaAISO(s.fechaTentativa);
+    return {
+      mes: mesDeFecha(s.marcaTemporal),
+      fechaTent: s.fechaTentativa || '',
+      nombre: s.nombre || '', correo: s.correo || '',
+      rol: s.rol || '(sin dato)',
+      programa: s.programa || '(sin programa)',
+      motivo: s.motivo || '(sin dato)',
+      servicio: s.servicio || '(sin dato)',
+      estado: s.estado,
+      vencida: !!iso && iso < hoy && pendiente(s.estado),
+    };
+  });
+
+  const hist: HistorialDash[] = historial.map((r) => ({
+    mes: mesDeFecha(r.marcaTemporal),
+    nombre: r.nombre || '', correo: r.correo || '',
+    rol: r.rol || '(sin dato)',
+    programa: r.programa || '(sin programa)',
+    motivo: r.motivo || '(sin dato)',
+    servicio: r.servicio || '(sin dato)',
+    impresora: r.impresora || '(sin dato)',
+    material: r.material || '(sin dato)',
+    estado: r.estado || '(sin dato)',
+    resultado: r.resultado || '(en curso)',
+    gramos: num(r.gramos),
+    horas: parsearHoras(r.tiempoHoras),
+    desperdicio: num(r.desperdicio),
+  }));
+
+  const fil: FilamentoDash[] = filamentos.map((f) => ({
+    id: f.id, tipo: String(f.tipo), color: f.color, marca: f.marca,
+    gramos: f.gramosRestantes, umbral: umbralDeFilamento(f, umbrales),
+  }));
+
+  return {
+    generado: hoy, esDemo: esModoDemo(),
+    solicitudes: sol, historial: hist, filamentos: fil,
+    impresoras, mantenimientos,
   };
 }

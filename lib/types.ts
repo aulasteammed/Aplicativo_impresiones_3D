@@ -107,13 +107,42 @@ export interface Impresora {
   notas: string;
 }
 
+/** Cómo se programa el PRÓXIMO mantenimiento a partir de este registro */
+export type ProgramacionMantenimiento = 'ninguna' | 'fecha' | 'horas';
+
 export interface Mantenimiento {
   fecha: string;
   impresoraId: string;
   tipo: 'preventivo' | 'correctivo' | 'consumible' | 'repuesto' | string;
   descripcion: string;
+  /** Costo en pesos colombianos (COP). Siempre se maneja en COP. */
   costo?: number;
   responsable: string;
+  /** Programación del próximo mantenimiento: sin programar, una fecha, o cada N horas de uso */
+  programacion?: ProgramacionMantenimiento;
+  /** Fecha programada (YYYY-MM-DD) cuando programacion === 'fecha' */
+  proximaFecha?: string;
+  /** Intervalo en horas acumuladas de la impresora cuando programacion === 'horas' */
+  cadaHoras?: number;
+  /** Horas acumuladas de la impresora al registrar (punto de partida del intervalo 'horas').
+   *  Se fija automáticamente al crear y NO se edita después. */
+  horasBase?: number;
+  /** Identificador de fila/índice en el backend, para editar o eliminar el registro.
+   *  No se persiste como columna; lo asigna `getMantenimientos` al leer. */
+  fila?: number;
+}
+
+/** Alerta de mantenimiento pendiente de una impresora (para el apartado 4 del dashboard) */
+export interface AlertaMantenimiento {
+  impresoraId: string;
+  nombre: string;
+  motivo: 'horas' | 'fecha';
+  estado: 'vencido' | 'proximo';
+  horasAcumuladas: number;
+  /** Horas transcurridas desde el último mantenimiento (motivo 'horas') */
+  horasDesde?: number;
+  cadaHoras?: number;
+  proximaFecha?: string;
 }
 
 export interface AlertaStock {
@@ -158,8 +187,60 @@ export interface DashboardData {
   materialConsumidoMes: number;
   tiempoPorImpresora: { impresora: string; horas: number }[];
   alertasUmbral: AlertaUmbral[];
+  alertasMantenimiento: AlertaMantenimiento[];
   proximasEntregas: { nombre: string; pieza: string; fecha: string; estado: string }[];
   esDemo: boolean;
+}
+
+// --- Datos crudos con forma para el Dashboard interactivo (filtrable) ----------
+
+export interface SolicitudDash {
+  mes: string;        // "YYYY-MM" derivado de la marca temporal
+  fechaTent: string;
+  nombre: string;
+  correo: string;
+  rol: string;
+  programa: string;
+  motivo: string;
+  servicio: string;
+  estado: string;
+  vencida: boolean;   // fecha tentativa ya pasó y sigue pendiente
+}
+
+export interface HistorialDash {
+  mes: string;
+  nombre: string;
+  correo: string;
+  rol: string;
+  programa: string;
+  motivo: string;
+  servicio: string;
+  impresora: string;
+  material: string;
+  estado: string;
+  resultado: string;  // Exitoso | Fallido | (en curso)
+  gramos: number;
+  horas: number;
+  desperdicio: number;
+}
+
+export interface FilamentoDash {
+  id: string;
+  tipo: string;
+  color: string;
+  marca: string;
+  gramos: number;
+  umbral: number;     // umbral efectivo (según las reglas de la pestaña Umbrales)
+}
+
+export interface DatosDashboard {
+  generado: string;   // fecha (YYYY-MM-DD) en que se leyeron los datos
+  esDemo: boolean;
+  solicitudes: SolicitudDash[];
+  historial: HistorialDash[];
+  filamentos: FilamentoDash[];
+  impresoras: Impresora[];
+  mantenimientos: Mantenimiento[];
 }
 
 export interface AnalisisSlicerResultado {

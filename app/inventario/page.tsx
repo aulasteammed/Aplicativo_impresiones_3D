@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
-import { normalizarTexto, calcularAlertasAgregadas } from '@/lib/util';
+import { normalizarTexto, calcularAlertasAgregadas, formatCOP } from '@/lib/util';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
 
@@ -665,7 +665,20 @@ function ModalImpresora({
 function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; texto: string }) => void }) {
   const { datos, cargando, error, recargar } = useDatos<{ mantenimientos: Mantenimiento[] }>('/api/inventario/mantenimiento');
   const { datos: dImp } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras', 5 * 60_000);
-  const [modal, setModal] = useState(false);
+  const [modal, setModal] = useState<Mantenimiento | 'nuevo' | null>(null);
+
+  async function eliminar(m: Mantenimiento) {
+    if (!window.confirm('¿Eliminar este registro de mantenimiento? Esta acción no se puede deshacer.')) return;
+    try {
+      const res = await fetch(`/api/inventario/mantenimiento?fila=${m.fila}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando');
+      onMensaje({ tipo: 'ok', texto: 'Registro de mantenimiento eliminado.' });
+      recargar();
+    } catch (e) {
+      onMensaje({ tipo: 'error', texto: (e as Error).message });
+    }
+  }
 
   return (
     <div className="card space-y-4">
@@ -674,13 +687,13 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
         <h2 className="font-semibold">Mantenimientos, consumibles y repuestos</h2>
         <div className="flex gap-2">
           <BotonRecargar onClick={recargar} cargando={cargando} />
-          <button className="btn-primary" onClick={() => setModal(true)}>+ Registrar</button>
+          <button className="btn-primary" onClick={() => setModal('nuevo')}>+ Registrar</button>
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="border-b border-slate-200">
-            <tr><th className="th">Fecha</th><th className="th">Impresora</th><th className="th">Tipo</th><th className="th">Descripción</th><th className="th">Costo</th><th className="th">Responsable</th></tr>
+            <tr><th className="th">Fecha</th><th className="th">Impresora</th><th className="th">Tipo</th><th className="th">Descripción</th><th className="th">Costo (COP)</th><th className="th">Responsable</th><th className="th">Próximo mant.</th><th className="th text-right">Acciones</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {(datos?.mantenimientos ?? []).map((m, i) => (
@@ -689,11 +702,16 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
                 <td className="td font-mono text-xs">{m.impresoraId}</td>
                 <td className="td capitalize">{m.tipo}</td>
                 <td className="td">{m.descripcion}</td>
-                <td className="td">{m.costo ? `$${m.costo.toLocaleString('es-CO')}` : '—'}</td>
+                <td className="td whitespace-nowrap">{m.costo ? formatCOP(m.costo) : '—'}</td>
                 <td className="td">{m.responsable || '—'}</td>
+                <td className="td text-xs whitespace-nowrap">{m.programacion === 'fecha' ? `📅 ${m.proximaFecha}` : m.programacion === 'horas' ? `⏱ cada ${m.cadaHoras} h` : '—'}</td>
+                <td className="td whitespace-nowrap text-right">
+                  <button className="text-steam-600 hover:underline text-xs font-medium" onClick={() => setModal(m)}>Editar</button>
+                  <button className="text-rose-600 hover:underline text-xs font-medium ml-3" onClick={() => eliminar(m)}>Eliminar</button>
+                </td>
               </tr>
             ))}
-            {(datos?.mantenimientos ?? []).length === 0 && <tr><td colSpan={6} className="td py-8 text-center text-slate-500">Sin registros de mantenimiento.</td></tr>}
+            {(datos?.mantenimientos ?? []).length === 0 && <tr><td colSpan={8} className="td py-8 text-center text-slate-500">Sin registros de mantenimiento.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -701,7 +719,8 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
       {modal && (
         <ModalMantenimiento
           impresoras={dImp?.impresoras ?? []}
-          onCerrar={() => setModal(false)}
+          editar={modal === 'nuevo' ? null : modal}
+          onCerrar={() => setModal(null)}
           onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargar(); }}
         />
       )}
@@ -710,15 +729,18 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
 }
 
 function ModalMantenimiento({
-  impresoras, onCerrar, onGuardado,
-}: { impresoras: Impresora[]; onCerrar: () => void; onGuardado: (texto: string) => void }) {
+  impresoras, editar, onCerrar, onGuardado,
+}: { impresoras: Impresora[]; editar?: Mantenimiento | null; onCerrar: () => void; onGuardado: (texto: string) => void }) {
   const [f, setF] = useState({
-    fecha: new Date().toISOString().slice(0, 10),
-    impresoraId: impresoras[0]?.id ?? '',
-    tipo: 'preventivo',
-    descripcion: '',
-    costo: '',
-    responsable: '',
+    fecha: editar?.fecha || new Date().toISOString().slice(0, 10),
+    impresoraId: editar?.impresoraId || impresoras[0]?.id || '',
+    tipo: editar?.tipo || 'preventivo',
+    descripcion: editar?.descripcion || '',
+    costo: editar?.costo != null ? String(editar.costo) : '',
+    responsable: editar?.responsable || '',
+    programacion: String(editar?.programacion || 'ninguna'),
+    proximaFecha: editar?.proximaFecha || '',
+    cadaHoras: editar?.cadaHoras != null ? String(editar.cadaHoras) : '',
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -728,13 +750,19 @@ function ModalMantenimiento({
     setError('');
     try {
       const res = await fetch('/api/inventario/mantenimiento', {
-        method: 'POST',
+        method: editar ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...f, costo: f.costo ? parseFloat(f.costo) : undefined }),
+        body: JSON.stringify({
+          ...f,
+          fila: editar?.fila,
+          costo: f.costo ? parseFloat(f.costo) : undefined,
+          proximaFecha: f.programacion === 'fecha' ? f.proximaFecha : undefined,
+          cadaHoras: f.programacion === 'horas' && f.cadaHoras ? parseFloat(f.cadaHoras) : undefined,
+        }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error guardando');
-      onGuardado('Registro de mantenimiento guardado.');
+      onGuardado(editar ? 'Mantenimiento actualizado.' : 'Registro de mantenimiento guardado.');
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -744,7 +772,7 @@ function ModalMantenimiento({
   }
 
   return (
-    <Modal abierto onCerrar={onCerrar} titulo="Registrar mantenimiento / consumible / repuesto">
+    <Modal abierto onCerrar={onCerrar} titulo={editar ? 'Editar mantenimiento' : 'Registrar mantenimiento / consumible / repuesto'}>
       <div className="space-y-4">
         {error && <Aviso tipo="error">{error}</Aviso>}
         <div className="grid grid-cols-2 gap-3">
@@ -767,10 +795,28 @@ function ModalMantenimiento({
           <div><label className="label">Costo (COP, opcional)</label><input type="number" min="0" className="input" value={f.costo} onChange={(e) => setF({ ...f, costo: e.target.value })} /></div>
           <div className="col-span-2"><label className="label">Descripción *</label><textarea className="input min-h-[70px]" value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} /></div>
           <div className="col-span-2"><label className="label">Responsable</label><input className="input" value={f.responsable} onChange={(e) => setF({ ...f, responsable: e.target.value })} /></div>
+          <div className="col-span-2 border-t border-slate-100 pt-3">
+            <label className="label">Programar el próximo mantenimiento</label>
+            <select className="input" value={f.programacion} onChange={(e) => setF({ ...f, programacion: e.target.value })}>
+              <option value="ninguna">Sin programar</option>
+              <option value="fecha">Para una fecha específica</option>
+              <option value="horas">Periódico — cada N horas de uso</option>
+            </select>
+          </div>
+          {f.programacion === 'fecha' && (
+            <div className="col-span-2"><label className="label">Fecha del próximo mantenimiento *</label><input type="date" className="input" value={f.proximaFecha} onChange={(e) => setF({ ...f, proximaFecha: e.target.value })} /></div>
+          )}
+          {f.programacion === 'horas' && (
+            <div className="col-span-2">
+              <label className="label">Repetir cada (horas de uso) *</label>
+              <input type="number" min="1" className="input" value={f.cadaHoras} onChange={(e) => setF({ ...f, cadaHoras: e.target.value })} />
+              <p className="text-xs text-slate-500 mt-1">{editar ? `La hora base del registro (${editar.horasBase != null ? `${editar.horasBase} h` : 'sin registrar'}) se conserva; no se modifica al editar.` : 'Se tomarán las horas acumuladas actuales de la impresora como punto de partida del intervalo.'}</p>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={guardar} disabled={guardando || !f.descripcion.trim() || !f.impresoraId}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button className="btn-primary" onClick={guardar} disabled={guardando || !f.descripcion.trim() || !f.impresoraId || (f.programacion === 'fecha' && !f.proximaFecha) || (f.programacion === 'horas' && !f.cadaHoras)}>{guardando ? 'Guardando…' : 'Guardar'}</button>
         </div>
       </div>
     </Modal>

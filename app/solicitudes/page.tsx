@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react';
 import { EstadoSolicitud, Solicitud } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
+import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, useDatos } from '@/components/ui';
 
 const ESTADOS: EstadoSolicitud[] = ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'];
 
@@ -17,6 +17,7 @@ export default function PaginaSolicitudes() {
   const [filtroMotivo, setFiltroMotivo] = useState('');
   const [detalle, setDetalle] = useState<Solicitud | null>(null);
   const [flujoCorreo, setFlujoCorreo] = useState<{ solicitud: Solicitud; estadoNuevo: EstadoSolicitud } | null>(null);
+  const [confirmarNotif, setConfirmarNotif] = useState<{ solicitud: Solicitud; estadoNuevo: EstadoSolicitud } | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
@@ -51,10 +52,7 @@ export default function PaginaSolicitudes() {
       await aplicarEstado(s, estado);
       setMensaje({ tipo: 'ok', texto: `Estado de ${s.nombre} actualizado a "${estado}".` });
       recargar();
-      const notificar = window.confirm(
-        `Estado actualizado a "${estado}".\n\n¿Desea enviar una notificación del cambio del estado de solicitud al solicitante?`,
-      );
-      if (notificar) setFlujoCorreo({ solicitud: s, estadoNuevo: estado });
+      setConfirmarNotif({ solicitud: s, estadoNuevo: estado });
     } catch (e) {
       setMensaje({ tipo: 'error', texto: (e as Error).message });
     }
@@ -156,6 +154,24 @@ export default function PaginaSolicitudes() {
           </div>
         )}
       </Modal>
+
+      {confirmarNotif && (
+        <ModalConfirmar
+          abierto
+          titulo="Notificar al solicitante"
+          icono="✉️"
+          confirmarTexto="Sí, enviar correo"
+          cancelarTexto="No, gracias"
+          onCancelar={() => setConfirmarNotif(null)}
+          onConfirmar={() => { setFlujoCorreo(confirmarNotif); setConfirmarNotif(null); }}
+        >
+          <p>
+            El estado de <strong className="font-semibold text-slate-800">{confirmarNotif.solicitud.nombre}</strong> se actualizó a{' '}
+            <Chip valor={confirmarNotif.estadoNuevo} />.
+          </p>
+          <p className="mt-3">¿Deseas enviar una notificación por correo del cambio de estado al solicitante?</p>
+        </ModalConfirmar>
+      )}
 
       {flujoCorreo && (
         <ModalCorreo

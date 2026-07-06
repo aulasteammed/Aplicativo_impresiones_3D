@@ -240,10 +240,12 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
 | **Filamentos** | A ID · B Tipo · C Color · D Marca · E Rollos · F Comenzado · G Gramos restantes · H Umbral alerta (g) *(en desuso)* · I Fecha registro · J Notas |
 | **Movimientos** | A Fecha · B Filamento ID · C Proyecto · D Gramos (− sale / + entra) · E Motivo |
 | **Impresoras** | A ID · B Nombre · C Modelo · D Estado · E Horas acumuladas · F Notas |
-| **Mantenimiento** | A Fecha · B Impresora ID · C Tipo · D Descripción · E Costo · F Responsable |
+| **Mantenimiento** | A Fecha · B Impresora ID · C Tipo · D Descripción · E **Costo (COP)** · F Responsable · G Programación (`ninguna`/`fecha`/`horas`) · H Próxima fecha · I Cada N horas · J Horas base (horas de la impresora al registrar) |
 | **Umbrales** | A ID · B Variable (`color`/`marca`/`tipo`) · C Valor · D Umbral (g) |
 
 > La columna **H de Filamentos** ("Umbral alerta (g)") quedó **en desuso**: desde que las alertas se definen en la pestaña **Umbrales**, los filamentos nuevos escriben `0` ahí. Se conserva solo por compatibilidad de posición.
+
+> **Costo de mantenimiento**: siempre se maneja en **pesos colombianos (COP)**. **Programación del próximo mantenimiento** (columnas G–J): al registrar una actividad se puede programar el siguiente para una **fecha** específica (H) o de forma **periódica cada N horas** de uso (I), tomando las horas acumuladas de la impresora al momento del registro como punto de partida (J). Esa programación es la que alimenta las **alertas de mantenimiento** del Dashboard (apartado de mantenimiento). La app **añade sola** las columnas nuevas a la hoja existente en el próximo arranque en modo real (solo reescribe la fila de encabezados; no toca los datos).
 
 ---
 

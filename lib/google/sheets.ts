@@ -311,7 +311,7 @@ const TABS_INVENTARIO: Record<string, string[]> = {
   Filamentos: ['ID', 'Tipo', 'Color', 'Marca', 'Rollos', 'Comenzado', 'Gramos restantes', 'Umbral alerta (g)', 'Fecha registro', 'Notas'],
   Movimientos: ['Fecha', 'Filamento ID', 'Proyecto', 'Gramos', 'Motivo'],
   Impresoras: ['ID', 'Nombre', 'Modelo', 'Estado', 'Horas acumuladas', 'Notas'],
-  Mantenimiento: ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo', 'Responsable'],
+  Mantenimiento: ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base'],
   Umbrales: ['ID', 'Variable', 'Valor', 'Umbral (g)'],
 };
 
@@ -333,7 +333,10 @@ export async function asegurarInventario(): Promise<void> {
   }
   for (const [tab, headers] of Object.entries(TABS_INVENTARIO)) {
     const fila1 = await leerRango(config.sheetInventarioId, `'${tab}'!A1:Z1`);
-    if (!fila1[0] || fila1[0][0] !== headers[0]) {
+    const actual = fila1[0] ?? [];
+    // Reescribe la fila de encabezados si falta o si el esquema cambió/creció
+    // (p. ej. columnas nuevas de programación de mantenimiento). Solo toca la fila 1.
+    if (headers.some((h, i) => (actual[i] ?? '') !== h)) {
       await escribirRango(config.sheetInventarioId, `'${tab}'!A1`, [headers]);
     }
   }
@@ -435,18 +438,55 @@ export async function guardarImpresora(imp: Impresora, esNueva: boolean): Promis
 
 export async function getMantenimientos(): Promise<Mantenimiento[]> {
   await asegurarInventario();
-  const filas = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A2:F`);
-  return filas.filter((f) => f[0]).map((f) => ({
-    fecha: f[0], impresoraId: f[1] ?? '', tipo: f[2] ?? '', descripcion: f[3] ?? '',
-    costo: f[4] ? num(f[4]) : undefined, responsable: f[5] ?? '',
-  })).reverse();
+  const filas = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A2:J`);
+  return filas
+    .map((f, i) => ({
+      fila: i + 2, // fila real en la hoja (para editar/eliminar)
+      fecha: f[0], impresoraId: f[1] ?? '', tipo: f[2] ?? '', descripcion: f[3] ?? '',
+      costo: f[4] ? num(f[4]) : undefined, responsable: f[5] ?? '',
+      programacion: (f[6] as Mantenimiento['programacion']) || 'ninguna',
+      proximaFecha: f[7] ?? '',
+      cadaHoras: f[8] ? num(f[8]) : undefined,
+      horasBase: f[9] !== undefined && f[9] !== '' ? num(f[9]) : undefined,
+    }))
+    .filter((m) => m.fecha)
+    .reverse();
 }
 
 export async function registrarMantenimiento(m: Mantenimiento): Promise<void> {
   await asegurarInventario();
   await anexarFilas(config.sheetInventarioId, `'Mantenimiento'!A1`, [
-    [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable],
+    [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable,
+     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', m.horasBase ?? ''],
   ]);
+}
+
+export async function actualizarMantenimiento(m: Mantenimiento): Promise<void> {
+  await asegurarInventario();
+  const fila = m.fila;
+  if (!fila || fila < 2) throw new Error('Registro de mantenimiento no identificado; actualiza la vista.');
+  const existente = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:J${fila}`);
+  if (!existente[0] || !existente[0][0]) throw new Error('El registro de mantenimiento cambió; actualiza la vista.');
+  // La "Horas base" (columna J) del registro original se PRESERVA: no se edita ni se agrega.
+  const horasBase = existente[0][9] ?? '';
+  await escribirRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:J${fila}`, [
+    [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable,
+     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', horasBase],
+  ]);
+}
+
+export async function eliminarMantenimiento(fila: number): Promise<void> {
+  await asegurarInventario();
+  if (!fila || fila < 2) throw new Error('Registro de mantenimiento no identificado; actualiza la vista.');
+  const sheetId = await sheetIdPorTitulo('Mantenimiento');
+  await cliente().spreadsheets.batchUpdate({
+    spreadsheetId: config.sheetInventarioId,
+    requestBody: {
+      requests: [{
+        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila } },
+      }],
+    },
+  });
 }
 
 // --- Umbrales de alerta (pestaña "Umbrales") -------------------------------

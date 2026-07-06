@@ -87,7 +87,7 @@ function seed(): DemoStore {
   ];
 
   const mantenimientos: Mantenimiento[] = [
-    { fecha: '2026-05-02', impresoraId: 'IMP-01', tipo: 'preventivo', descripcion: 'Limpieza de extrusor y lubricación de rieles', responsable: 'Monitor Aula STEAM' },
+    { fecha: '2026-05-02', impresoraId: 'IMP-01', tipo: 'preventivo', descripcion: 'Limpieza de extrusor y lubricación de rieles', responsable: 'Monitor Aula STEAM', costo: 0, programacion: 'horas', cadaHoras: 100, horasBase: 20 },
   ];
 
   const umbrales: UmbralAlerta[] = [
@@ -277,11 +277,30 @@ export async function guardarImpresora(imp: Impresora, esNueva: boolean): Promis
 }
 
 export async function getMantenimientos(): Promise<Mantenimiento[]> {
-  return [...store().mantenimientos].reverse();
+  return store().mantenimientos.map((m, i) => ({ ...m, fila: i })).reverse();
 }
 
 export async function registrarMantenimiento(m: Mantenimiento): Promise<void> {
   store().mantenimientos.push(m);
+}
+
+export async function actualizarMantenimiento(m: Mantenimiento): Promise<void> {
+  const st = store();
+  const i = m.fila;
+  if (i == null || i < 0 || i >= st.mantenimientos.length) throw new Error('Registro de mantenimiento no encontrado; actualiza la vista.');
+  const original = st.mantenimientos[i];
+  // Se PRESERVA la "Horas base" original: no se edita ni se agrega.
+  st.mantenimientos[i] = {
+    fecha: m.fecha, impresoraId: m.impresoraId, tipo: m.tipo, descripcion: m.descripcion,
+    costo: m.costo, responsable: m.responsable, programacion: m.programacion,
+    proximaFecha: m.proximaFecha, cadaHoras: m.cadaHoras, horasBase: original.horasBase,
+  };
+}
+
+export async function eliminarMantenimiento(fila: number): Promise<void> {
+  const st = store();
+  if (fila == null || fila < 0 || fila >= st.mantenimientos.length) throw new Error('Registro de mantenimiento no encontrado; actualiza la vista.');
+  st.mantenimientos.splice(fila, 1);
 }
 
 export async function getUmbrales(): Promise<UmbralAlerta[]> {
