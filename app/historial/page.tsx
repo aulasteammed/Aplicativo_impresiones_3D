@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { RegistroHistorial } from '@/lib/types';
 import { Aviso, BarraBusqueda, BotonRecargar, Chip, KpiCard, Modal, useDatos } from '@/components/ui';
-import { num } from '@/lib/util';
+import { num, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaHistorial() {
   const { datos, cargando, error, recargar } = useDatos<{ registros: RegistroHistorial[] }>('/api/historial');
@@ -15,30 +15,32 @@ export default function PaginaHistorial() {
   const [detalle, setDetalle] = useState<RegistroHistorial | null>(null);
 
   const registros = datos?.registros ?? [];
-  const materiales = useMemo(() => Array.from(new Set(registros.map((r) => r.material).filter(Boolean))), [registros]);
+  // Solo impresiones finalizadas: las camas Activa/En pausa viven en "Camas de impresión".
+  const historicos = useMemo(() => registros.filter((r) => !esCamaEnCurso(r.estado)), [registros]);
+  const materiales = useMemo(() => Array.from(new Set(historicos.map((r) => r.material).filter(Boolean))), [historicos]);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return registros.filter((r) => {
+    return historicos.filter((r) => {
       if (filtroResultado && r.resultado !== filtroResultado) return false;
       if (filtroMaterial && r.material !== filtroMaterial) return false;
       if (!q) return true;
       return [r.codigo, r.nombre, r.correo, r.descripcionPieza, r.impresora, r.filamentoId]
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
-  }, [registros, busqueda, filtroResultado, filtroMaterial]);
+  }, [historicos, busqueda, filtroResultado, filtroMaterial]);
 
-  const finalizadas = registros.filter((r) => r.resultado);
+  const finalizadas = historicos.filter((r) => r.resultado);
   const exitosas = finalizadas.filter((r) => r.resultado === 'Exitoso').length;
-  const desperdicioTotal = Math.round(registros.reduce((a, r) => a + num(r.desperdicio), 0));
-  const materialTotal = Math.round(registros.reduce((a, r) => a + num(r.gramos), 0));
+  const desperdicioTotal = Math.round(historicos.reduce((a, r) => a + num(r.desperdicio), 0));
+  const materialTotal = Math.round(historicos.reduce((a, r) => a + num(r.gramos), 0));
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Historial de impresiones</h1>
-          <p className="text-sm text-slate-500">Registro completo del Sheets &quot;Historial de impresión 3D FDM&quot;</p>
+          <p className="text-sm text-slate-500">Impresiones finalizadas — las camas activas o en pausa están en &quot;Camas de impresión&quot;</p>
         </div>
         <BotonRecargar onClick={recargar} cargando={cargando} />
       </div>
@@ -46,7 +48,7 @@ export default function PaginaHistorial() {
       {error && <Aviso tipo="error">Error: {error}</Aviso>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard titulo="Registros" valor={registros.length} />
+        <KpiCard titulo="Registros" valor={historicos.length} />
         <KpiCard titulo="Tasa de éxito" valor={finalizadas.length ? `${Math.round((exitosas / finalizadas.length) * 100)}%` : '—'} sub={`${finalizadas.length} con resultado`} />
         <KpiCard titulo="Material impreso" valor={`${materialTotal} g`} />
         <KpiCard titulo="Desperdicio total" valor={`${desperdicioTotal} g`} />

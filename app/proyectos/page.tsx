@@ -8,8 +8,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
-import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS } from '@/lib/util';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, useDatos } from '@/components/ui';
+import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaProyectos() {
   const { datos, cargando, error, recargar } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos');
@@ -19,12 +19,27 @@ export default function PaginaProyectos() {
   const [modalCrear, setModalCrear] = useState(false);
   const [editar, setEditar] = useState<Proyecto | null>(null);
   const [finalizar, setFinalizar] = useState<Proyecto | null>(null);
+  const [porEliminar, setPorEliminar] = useState<Proyecto | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error' | 'alerta'; texto: string } | null>(null);
+
+  async function hacerEliminar(p: Proyecto) {
+    try {
+      const res = await fetch(`/api/proyectos/${encodeURIComponent(p.codigo)}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando la cama');
+      setMensaje({ tipo: 'ok', texto: `Cama ${p.codigo} eliminada.` });
+      setPorEliminar(null);
+      recargar();
+    } catch (e) {
+      setMensaje({ tipo: 'error', texto: (e as Error).message });
+    }
+  }
 
   const proyectos = datos?.proyectos ?? [];
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return proyectos.filter((p) => {
+      if (!esCamaEnCurso(p.estado)) return false; // las finalizadas viven en "Historial"
       if (filtroEstado && p.estado !== filtroEstado) return false;
       if (!q) return true;
       return [p.codigo, p.nombre, p.impresora, ...p.items.map((i) => i.nombre)]
@@ -41,6 +56,14 @@ export default function PaginaProyectos() {
     const body = await res.json();
     if (!res.ok) setMensaje({ tipo: 'error', texto: body.error });
     else recargar();
+  }
+
+  /** Cambio de estado desde el chip. "Finalizada" abre el modal (necesita
+   *  resultado/desperdicio y descuenta inventario); los demás son cambio directo. */
+  function onEstadoChange(p: Proyecto, estado: EstadoProyecto) {
+    if (estado === p.estado) return;
+    if (estado === 'Finalizada') { setFinalizar(p); return; }
+    cambiarEstado(p, estado);
   }
 
   return (
@@ -64,7 +87,7 @@ export default function PaginaProyectos() {
           <BarraBusqueda valor={busqueda} onCambio={setBusqueda} placeholder="Buscar por código, nombre, impresora…" />
           <select className="input" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
             <option value="">Todos los estados</option>
-            {['Activa', 'En pausa', 'Finalizada'].map((e) => <option key={e}>{e}</option>)}
+            {['Activa', 'En pausa'].map((e) => <option key={e}>{e}</option>)}
           </select>
         </div>
 
@@ -95,20 +118,24 @@ export default function PaginaProyectos() {
                     <td className="td">{p.items.length}</td>
                     <td className="td">{gramos} g · {materiales}</td>
                     <td className="td">{horas}</td>
-                    <td className="td"><Chip valor={p.estado} /></td>
                     <td className="td" onClick={(e) => e.stopPropagation()}>
-                      {p.estado !== 'Finalizada' && (
-                        <div className="flex gap-1.5">
-                          <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setEditar(p)}>Editar</button>
-                          <button
-                            className="btn-secondary !px-2 !py-1 text-xs"
-                            onClick={() => cambiarEstado(p, p.estado === 'En pausa' ? 'Activa' : 'En pausa')}
-                          >
-                            {p.estado === 'En pausa' ? 'Reanudar' : 'Pausar'}
-                          </button>
-                          <button className="btn-primary !px-2 !py-1 text-xs" onClick={() => setFinalizar(p)}>Finalizar</button>
-                        </div>
-                      )}
+                      <div className="relative inline-flex items-center rounded-full focus-within:ring-2 focus-within:ring-steam-400" title="Cambiar estado de la cama">
+                        <Chip valor={p.estado} />
+                        <span className="pointer-events-none ml-1 text-xs text-slate-400">▾</span>
+                        <select
+                          aria-label="Cambiar estado de la cama"
+                          className="absolute inset-0 cursor-pointer opacity-0"
+                          value={p.estado}
+                          onChange={(e) => onEstadoChange(p, e.target.value as EstadoProyecto)}
+                        >
+                          <option value="Activa">Activa</option>
+                          <option value="En pausa">En pausa</option>
+                          <option value="Finalizada">Finalizada</option>
+                        </select>
+                      </div>
+                    </td>
+                    <td className="td" onClick={(e) => e.stopPropagation()}>
+                      <AccionesFila onEditar={() => setEditar(p)} onEliminar={() => setPorEliminar(p)} />
                     </td>
                   </tr>
                 );
@@ -178,6 +205,17 @@ export default function PaginaProyectos() {
           }}
         />
       )}
+
+      {porEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar cama" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setPorEliminar(null)}
+          onConfirmar={() => hacerEliminar(porEliminar)}
+        >
+          ¿Eliminar la cama <b>{porEliminar.codigo}</b> ({porEliminar.impresora}, {porEliminar.items.length} solicitud{porEliminar.items.length === 1 ? '' : 'es'})? Se borrará del historial. Esta acción no se puede deshacer.
+        </ModalConfirmar>
+      )}
     </div>
   );
 }
@@ -201,17 +239,20 @@ function ModalProyecto({
   const { datos: dFil } = useDatos<{ filamentos: Filamento[] }>('/api/inventario/filamentos', 5 * 60_000);
   const { datos: dProy } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos', 5 * 60_000);
 
-  const [codigo, setCodigo] = useState('');
+  const [codigo, setCodigo] = useState(proyectoExistente?.codigo ?? '');
   const [impresora, setImpresora] = useState(proyectoExistente?.impresora ?? '');
-  const [items, setItems] = useState<ItemForm[]>([]);
+  const [items, setItems] = useState<ItemForm[]>(
+    () => (proyectoExistente ? proyectoExistente.items.map((i) => ({ ...i, _key: i.solicitudId })) : []),
+  );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [analisis, setAnalisis] = useState<AnalisisSlicerResultado[] | null>(null);
   const [analizando, setAnalizando] = useState(false);
+  const [mostrarResumen, setMostrarResumen] = useState(false);
 
-  // Solo solicitudes aprobadas (y que no estén ya en el proyecto en edición)
-  const yaIncluidas = new Set(proyectoExistente?.items.map((i) => i.solicitudId) ?? []);
-  const aprobadas = (dSol?.solicitudes ?? []).filter((s) => s.estado === 'Aprobada' && !yaIncluidas.has(s.id));
+  // Solicitudes en estado "Aprobada": se pueden añadir/quitar de la cama. Las que ya
+  // están en la cama aparecen marcadas (desmarcar = quitar).
+  const aprobadas = (dSol?.solicitudes ?? []).filter((s) => s.estado === 'Aprobada');
   const impresoras = dImp?.impresoras ?? [];
   const filamentos = dFil?.filamentos ?? [];
   const codigosExistentes = (dProy?.proyectos ?? []).map((p) => p.codigo);
@@ -223,18 +264,31 @@ function ModalProyecto({
   }, [dProy]);
 
   const codigoNorm = codigo.trim().toLowerCase();
-  const codigoDuplicado = !!codigoNorm && codigosExistentes.some((c) => c.trim().toLowerCase() === codigoNorm);
+  const propioNorm = (proyectoExistente?.codigo ?? '').trim().toLowerCase();
+  // En edición, que el código coincida con el propio de la cama NO es duplicado.
+  const codigoDuplicado = !!codigoNorm && codigosExistentes.some((c) => {
+    const cn = c.trim().toLowerCase();
+    return cn === codigoNorm && cn !== propioNorm;
+  });
 
   function alternarSolicitud(s: Solicitud) {
     const existe = items.find((i) => i.solicitudId === s.id);
     if (existe) {
       setItems(items.filter((i) => i.solicitudId !== s.id));
-    } else {
-      setItems([...items, {
+      return;
+    }
+    // Al re-añadir una solicitud que ya era de la cama, se restauran sus valores originales.
+    const orig = proyectoExistente?.items.find((i) => i.solicitudId === s.id);
+    setItems([...items, orig
+      ? { ...orig, _key: s.id }
+      : {
         _key: s.id, solicitudId: s.id, nombre: s.nombre, correo: s.correo,
         descripcionPieza: s.descripcionPieza, tiempoHoras: 0, gramos: 0, material: 'PLA', filamentoId: undefined,
       }]);
-    }
+  }
+
+  function quitarItem(key: string) {
+    setItems(items.filter((i) => i._key !== key));
   }
 
   function actualizarItem(key: string, cambios: Partial<ItemProyecto>) {
@@ -280,41 +334,33 @@ function ModalProyecto({
     actualizarItem(key, cambios);
   }
 
+  function construirPayload(): ItemProyecto[] {
+    return items.map(({ _key, ...rest }) => {
+      const material = canonicalizarMaterial(rest.material);
+      // Red de seguridad: si el filamento asignado no concuerda con el material, desasignar.
+      const fl = rest.filamentoId ? filamentos.find((f) => f.id === rest.filamentoId) : undefined;
+      const filamentoId = fl && material.trim() && canonicalizarMaterial(String(fl.tipo)) !== material
+        ? undefined : rest.filamentoId;
+      return { ...rest, material, filamentoId };
+    });
+  }
+
+  // --- Crear (POST) ---
   async function guardar() {
-    if (!esEdicion) {
-      if (!codigo.trim()) { setError('Ingrese un código para la cama.'); return; }
-      if (codigoDuplicado) { setError(`Ya existe una cama con el código "${codigo.trim()}". Cambie el código para continuar.`); return; }
-    }
+    if (!codigo.trim()) { setError('Ingrese un código para la cama.'); return; }
+    if (codigoDuplicado) { setError(`Ya existe una cama con el código "${codigo.trim()}". Cambie el código para continuar.`); return; }
+    if (!impresora) { setError('Seleccione una impresora.'); return; }
     setGuardando(true);
     setError('');
     try {
-      const payload = items.map(({ _key, ...rest }) => {
-        const material = canonicalizarMaterial(rest.material);
-        // Red de seguridad: si el filamento asignado no concuerda con el material, desasignar.
-        const fl = rest.filamentoId ? filamentos.find((f) => f.id === rest.filamentoId) : undefined;
-        const filamentoId = fl && material.trim() && canonicalizarMaterial(String(fl.tipo)) !== material
-          ? undefined : rest.filamentoId;
-        return { ...rest, material, filamentoId };
+      const res = await fetch('/api/proyectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: codigo.trim(), impresora, items: construirPayload() }),
       });
-      let res: Response;
-      if (esEdicion) {
-        res = await fetch(`/api/proyectos/${encodeURIComponent(proyectoExistente!.codigo)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: payload }),
-        });
-      } else {
-        res = await fetch('/api/proyectos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ codigo: codigo.trim(), impresora, items: payload }),
-        });
-      }
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error guardando la cama');
-      onGuardado(esEdicion
-        ? `Solicitudes añadidas a la cama ${proyectoExistente!.codigo}.`
-        : `Cama creada con código ${body.codigo}.`);
+      onGuardado(`Cama creada con código ${body.codigo}.`);
       onCerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -323,44 +369,99 @@ function ModalProyecto({
     }
   }
 
+  // --- Editar (PATCH): revisar → confirmar en el resumen → aplicar ---
+  function revisarCambios() {
+    if (!codigo.trim()) { setError('Ingrese un código para la cama.'); return; }
+    if (codigoDuplicado) { setError(`Ya existe otra cama con el código "${codigo.trim()}".`); return; }
+    if (!impresora) { setError('Seleccione una impresora.'); return; }
+    setError('');
+    setMostrarResumen(true);
+  }
+
+  async function guardarEdicion() {
+    setGuardando(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/proyectos/${encodeURIComponent(proyectoExistente!.codigo)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editar: true, nuevoCodigo: codigo.trim(), impresora, items: construirPayload() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error guardando los cambios');
+      onGuardado(`Cama ${body.codigo || codigo.trim()} actualizada.`);
+      onCerrar();
+    } catch (e) {
+      setMostrarResumen(false);
+      setError((e as Error).message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const fmtHM = (h: number) => { const m = Math.round((h || 0) * 60); return `${Math.floor(m / 60)} h ${m % 60} min`; };
+
+  /** Diferencias entre la cama original y la edición actual (para el resumen de confirmación). */
+  function calcularCambios() {
+    const orig = proyectoExistente!;
+    const origPorId = new Map(orig.items.map((i) => [i.solicitudId, i]));
+    const curPorId = new Map(items.map((i) => [i.solicitudId, i]));
+    const agregadas = items.filter((i) => !origPorId.has(i.solicitudId)).map((i) => i.nombre);
+    const eliminadas = orig.items.filter((i) => !curPorId.has(i.solicitudId)).map((i) => i.nombre);
+    const modificadas: { nombre: string; cambios: string[] }[] = [];
+    for (const cur of items) {
+      const o = origPorId.get(cur.solicitudId);
+      if (!o) continue;
+      const ch: string[] = [];
+      if (Math.round((o.tiempoHoras || 0) * 60) !== Math.round((cur.tiempoHoras || 0) * 60)) ch.push(`tiempo ${fmtHM(o.tiempoHoras)} → ${fmtHM(cur.tiempoHoras)}`);
+      if (Math.round((o.gramos || 0) * 10) !== Math.round((cur.gramos || 0) * 10)) ch.push(`gramos ${Math.round(o.gramos)} → ${Math.round(cur.gramos)}`);
+      if (canonicalizarMaterial(o.material) !== canonicalizarMaterial(cur.material)) ch.push(`material ${o.material || '—'} → ${canonicalizarMaterial(cur.material) || '—'}`);
+      if ((o.filamentoId || '') !== (cur.filamentoId || '')) ch.push(`filamento ${o.filamentoId || 'sin asignar'} → ${cur.filamentoId || 'sin asignar'}`);
+      if (ch.length) modificadas.push({ nombre: cur.nombre, cambios: ch });
+    }
+    const codigoCambio = codigo.trim() !== orig.codigo ? { de: orig.codigo, a: codigo.trim() } : null;
+    const impresoraCambio = impresora !== orig.impresora ? { de: orig.impresora, a: impresora } : null;
+    const hayCambios = !!codigoCambio || !!impresoraCambio || agregadas.length > 0 || eliminadas.length > 0 || modificadas.length > 0;
+    return { codigoCambio, impresoraCambio, agregadas, eliminadas, modificadas, hayCambios };
+  }
+
   return (
+    <>
     <Modal
       abierto
       onCerrar={onCerrar}
-      titulo={esEdicion ? `Añadir solicitudes a ${proyectoExistente!.codigo}` : 'Nueva cama de impresión'}
+      titulo={esEdicion ? `Editar cama ${proyectoExistente!.codigo}` : 'Nueva cama de impresión'}
       ancho="max-w-5xl"
     >
       <div className="space-y-5">
         {error && <Aviso tipo="error">{error}</Aviso>}
 
-        {!esEdicion && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="label">Código de la cama *</label>
-              <input
-                className={`input ${codigoDuplicado ? '!border-red-400 !ring-red-200' : ''}`}
-                value={codigo}
-                onChange={(e) => setCodigo(e.target.value)}
-                placeholder="IMP-AAMMDD-NN"
-              />
-              {codigoDuplicado ? (
-                <p className="mt-1 text-xs text-red-600">Ya existe una cama con este código. Cámbielo para continuar.</p>
-              ) : (
-                <p className="mt-1 text-xs text-slate-500">Generado automáticamente; puede modificarlo. Debe ser único.</p>
-              )}
-            </div>
-            <div>
-              <label className="label">Impresora *</label>
-              <select className="input" value={impresora} onChange={(e) => setImpresora(e.target.value)}>
-                <option value="">Seleccione…</option>
-                {impresoras.map((i) => <option key={i.id} value={i.nombre}>{i.nombre} — {i.modelo}</option>)}
-              </select>
-            </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">Código de la cama *</label>
+            <input
+              className={`input ${codigoDuplicado ? '!border-red-400 !ring-red-200' : ''}`}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              placeholder="IMP-AAMMDD-NN"
+            />
+            {codigoDuplicado ? (
+              <p className="mt-1 text-xs text-red-600">Ya existe otra cama con este código. Cámbielo para continuar.</p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">{esEdicion ? 'Puede modificar el código de la cama. Debe ser único.' : 'Generado automáticamente; puede modificarlo. Debe ser único.'}</p>
+            )}
           </div>
-        )}
+          <div>
+            <label className="label">Impresora *</label>
+            <select className="input" value={impresora} onChange={(e) => setImpresora(e.target.value)}>
+              <option value="">Seleccione…</option>
+              {impresoras.map((i) => <option key={i.id} value={i.nombre}>{i.nombre} — {i.modelo}</option>)}
+            </select>
+          </div>
+        </div>
 
         <div>
-          <p className="label">Solicitudes aprobadas disponibles (seleccione una o varias) *</p>
+          <p className="label">Solicitudes aprobadas (marque para incluir en la cama) *</p>
           {aprobadas.length === 0 ? (
             <Aviso tipo="info">No hay solicitudes en estado &quot;Aprobada&quot; disponibles.</Aviso>
           ) : (
@@ -453,9 +554,12 @@ function ModalProyecto({
                   return (
                     <div key={it._key} className="rounded-lg border border-slate-200 p-3">
                       <div className="grid items-center gap-2 md:grid-cols-[1fr_150px_100px_120px_200px]">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{it.nombre}</p>
-                          <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{it.nombre}</p>
+                            <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
+                          </div>
+                          <button type="button" onClick={() => quitarItem(it._key)} className="shrink-0 text-sm text-rose-500 hover:text-rose-700" title="Quitar esta solicitud de la cama">✕</button>
                         </div>
                         <div>
                           <label className="label">Tiempo (h / min)</label>
@@ -526,14 +630,65 @@ function ModalProyecto({
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
           <button
             className="btn-primary"
-            onClick={guardar}
-            disabled={guardando || items.length === 0 || (!esEdicion && (!codigo.trim() || codigoDuplicado || !impresora))}
+            onClick={esEdicion ? revisarCambios : guardar}
+            disabled={guardando || items.length === 0 || !codigo.trim() || codigoDuplicado || !impresora
+              || items.some((it) => !(it.gramos > 0) || !(it.tiempoHoras > 0) || !it.material.trim())}
           >
-            {guardando ? 'Guardando…' : esEdicion ? 'Añadir a la cama' : 'Crear cama'}
+            {guardando ? 'Guardando…' : esEdicion ? 'Revisar cambios' : 'Crear cama'}
           </button>
         </div>
       </div>
     </Modal>
+
+      {/* Resumen de cambios (confirmación antes de aplicar la edición) */}
+      {mostrarResumen && esEdicion && (() => {
+        const c = calcularCambios();
+        return (
+          <Modal abierto onCerrar={() => setMostrarResumen(false)} titulo={`Confirmar cambios · ${proyectoExistente!.codigo}`} ancho="max-w-xl" centrado>
+            <div className="space-y-4">
+              {error && <Aviso tipo="error">{error}</Aviso>}
+              {!c.hayCambios ? (
+                <Aviso tipo="info">No se detectaron cambios respecto a la cama original.</Aviso>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  <p className="text-slate-600">Revisa los cambios antes de aplicarlos a la cama:</p>
+                  {c.codigoCambio && (
+                    <div className="rounded-lg bg-slate-50 px-3 py-2"><b>Código:</b> <span className="font-mono">{c.codigoCambio.de}</span> → <span className="font-mono text-steam-700">{c.codigoCambio.a}</span></div>
+                  )}
+                  {c.impresoraCambio && (
+                    <div className="rounded-lg bg-slate-50 px-3 py-2"><b>Impresora:</b> {c.impresoraCambio.de} → <span className="text-steam-700">{c.impresoraCambio.a}</span></div>
+                  )}
+                  {c.agregadas.length > 0 && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <b className="text-emerald-800">Solicitudes añadidas ({c.agregadas.length}):</b>
+                      <ul className="mt-1 list-disc pl-5 text-emerald-900">{c.agregadas.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                    </div>
+                  )}
+                  {c.eliminadas.length > 0 && (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                      <b className="text-rose-800">Solicitudes eliminadas ({c.eliminadas.length}):</b>
+                      <ul className="mt-1 list-disc pl-5 text-rose-900">{c.eliminadas.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                    </div>
+                  )}
+                  {c.modificadas.length > 0 && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <b className="text-amber-800">Solicitudes modificadas ({c.modificadas.length}):</b>
+                      <ul className="mt-1 space-y-1 text-amber-900">
+                        {c.modificadas.map((m, i) => <li key={i}><span className="font-medium">{m.nombre}</span>: {m.cambios.join(' · ')}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <button className="btn-secondary" onClick={() => setMostrarResumen(false)} disabled={guardando}>Volver a editar</button>
+                <button className="btn-primary" onClick={guardarEdicion} disabled={guardando || !c.hayCambios}>{guardando ? 'Guardando…' : 'Confirmar cambios'}</button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
+    </>
   );
 }
 

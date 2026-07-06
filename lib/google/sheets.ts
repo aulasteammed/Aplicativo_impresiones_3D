@@ -27,13 +27,29 @@ function cliente(): sheets_v4.Sheets {
   return _sheets;
 }
 
+// Caché de lecturas con TTL corto. La API de Sheets limita a ~60 lecturas por
+// minuto por usuario (la service account). Al cambiar de ventana o con el refresco
+// automático se repiten muchas lecturas de los mismos rangos; la caché las colapsa
+// para no exceder la cuota. Cualquier escritura/alta/baja invalida toda la caché.
+const TTL_LECTURA_MS = 12_000;
+const cacheLecturas = new Map<string, { t: number; datos: string[][] }>();
+
+function invalidarCacheLecturas(): void {
+  cacheLecturas.clear();
+}
+
 async function leerRango(spreadsheetId: string, range: string): Promise<string[][]> {
+  const clave = `${spreadsheetId}::${range}`;
+  const c = cacheLecturas.get(clave);
+  if (c && Date.now() - c.t < TTL_LECTURA_MS) return c.datos;
   const res = await cliente().spreadsheets.values.get({
     spreadsheetId,
     range,
     valueRenderOption: 'FORMATTED_VALUE',
   });
-  return (res.data.values ?? []) as string[][];
+  const datos = (res.data.values ?? []) as string[][];
+  cacheLecturas.set(clave, { t: Date.now(), datos });
+  return datos;
 }
 
 async function escribirRango(spreadsheetId: string, range: string, values: (string | number)[][]) {
@@ -43,6 +59,7 @@ async function escribirRango(spreadsheetId: string, range: string, values: (stri
     valueInputOption: 'USER_ENTERED',
     requestBody: { values },
   });
+  invalidarCacheLecturas();
 }
 
 async function anexarFilas(spreadsheetId: string, range: string, values: (string | number)[][]) {
@@ -53,6 +70,13 @@ async function anexarFilas(spreadsheetId: string, range: string, values: (string
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values },
   });
+  invalidarCacheLecturas();
+}
+
+/** batchUpdate + invalida la caché de lecturas (altas/bajas de filas, crear pestañas). */
+async function batchUpdateCliente(spreadsheetId: string, requests: sheets_v4.Schema$Request[]): Promise<void> {
+  await cliente().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+  invalidarCacheLecturas();
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +156,41 @@ export async function actualizarEstadoSolicitud(id: string, fila: number, estado
     filaReal = idx + 2;
   }
   await escribirRango(config.sheetSolicitudesId, `'${tab}'!M${filaReal}`, [[estado]]);
+}
+
+/** sheetId (gid) de una pestaña dentro de un spreadsheet dado (para borrar filas). */
+async function sheetIdEn(spreadsheetId: string, titulo: string): Promise<number> {
+  const meta = await cliente().spreadsheets.get({ spreadsheetId });
+  const hoja = (meta.data.sheets ?? []).find((s) => s.properties?.title === titulo);
+  const id = hoja?.properties?.sheetId;
+  if (id == null) throw new Error(`Pestaña "${titulo}" no encontrada`);
+  return id;
+}
+
+/** Ubica la fila real de una solicitud por su marca temporal (id), re-buscándola si se movió. */
+async function filaRealSolicitud(id: string, fila: number): Promise<number> {
+  const tab = config.tabSolicitudes;
+  const verif = await leerRango(config.sheetSolicitudesId, `'${tab}'!A${fila}:A${fila}`);
+  if ((verif[0]?.[0] ?? '') === id) return fila;
+  const todas = await leerRango(config.sheetSolicitudesId, `'${tab}'!A2:A`);
+  const idx = todas.findIndex((r) => (r[0] ?? '') === id);
+  if (idx === -1) throw new Error(`No se encontró la solicitud con marca temporal "${id}"`);
+  return idx + 2;
+}
+
+/** Edita las columnas B..L de una solicitud (no toca A marca temporal ni M estado). */
+export async function actualizarSolicitud(sol: Solicitud): Promise<void> {
+  const filaReal = await filaRealSolicitud(sol.id, sol.fila);
+  await escribirRango(config.sheetSolicitudesId, `'${config.tabSolicitudes}'!B${filaReal}:L${filaReal}`, [[
+    sol.nombre, sol.correo, sol.rol, sol.programa, sol.motivo, sol.servicio,
+    sol.descripcionPieza, sol.objetivoPieza, sol.archivos ?? '', sol.fechaTentativa, sol.celular,
+  ]]);
+}
+
+export async function eliminarSolicitud(id: string, fila: number): Promise<void> {
+  const filaReal = await filaRealSolicitud(id, fila);
+  const sheetId = await sheetIdEn(config.sheetSolicitudesId, config.tabSolicitudes);
+  await batchUpdateCliente(config.sheetSolicitudesId, [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: filaReal - 1, endIndex: filaReal } } }]);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +346,71 @@ export async function actualizarEstadoProyecto(codigo: string, estado: EstadoPro
   }
 }
 
+/** sheetId (gid) de la pestaña de Historial (para borrar filas) */
+async function sheetIdHistorial(): Promise<number> {
+  const meta = await cliente().spreadsheets.get({ spreadsheetId: config.sheetHistorialId });
+  const hoja = (meta.data.sheets ?? []).find((s) => s.properties?.title === config.tabHistorial);
+  const id = hoja?.properties?.sheetId;
+  if (id == null) throw new Error(`Pestaña "${config.tabHistorial}" no encontrada`);
+  return id;
+}
+
+/**
+ * Edición COMPLETA de una cama: reemplaza su código, impresora y el conjunto de
+ * ítems (añadir / quitar / modificar). Conserva el estado (Activa/En pausa).
+ * Estrategia segura: primero se AÑADEN las filas nuevas y luego se BORRAN las
+ * viejas — si el borrado fallara, quedarían duplicados (recuperable) en vez de
+ * perder la cama. Devuelve el código final.
+ */
+export async function editarProyecto(
+  codigoOriginal: string, nuevoCodigo: string, impresora: string,
+  items: ItemProyecto[], solicitudes: Solicitud[],
+): Promise<string> {
+  await asegurarColumnasExtra();
+  const registros = await getHistorial();
+  const filasCama = registros.filter((r) => r.codigo === codigoOriginal);
+  if (filasCama.length === 0) throw new Error(`Cama ${codigoOriginal} no encontrada`);
+  if (items.length === 0) throw new Error('La cama debe tener al menos una solicitud.');
+  const estado = filasCama[0].estado || 'Activa';
+  const codigoLimpio = nuevoCodigo.trim();
+
+  // Si cambió el código, validar que no choque con OTRA cama
+  if (codigoLimpio.toLowerCase() !== codigoOriginal.trim().toLowerCase()) {
+    const otros = new Set(registros
+      .filter((r) => r.codigo && r.codigo !== codigoOriginal)
+      .map((r) => (r.codigo ?? '').trim().toLowerCase()));
+    if (otros.has(codigoLimpio.toLowerCase())) {
+      throw new Error(`Ya existe una cama con el código "${codigoLimpio}". Use otro código.`);
+    }
+  }
+
+  // 1) Añadir las filas nuevas (al final)
+  const porId = new Map(solicitudes.map((s) => [s.id, s]));
+  const nuevas = items.map((it) => itemAFilaHistorial(codigoLimpio, impresora, estado, it, porId.get(it.solicitudId)));
+  await anexarFilas(config.sheetHistorialId, `'${config.tabHistorial}'!A1`, nuevas);
+
+  // 2) Borrar las filas viejas (índices descendentes para no desplazar los que faltan)
+  const sheetId = await sheetIdHistorial();
+  const requests = filasCama
+    .map((r) => r.fila)
+    .sort((a, b) => b - a)
+    .map((fila) => ({ deleteDimension: { range: { sheetId, dimension: 'ROWS' as const, startIndex: fila - 1, endIndex: fila } } }));
+  await batchUpdateCliente(config.sheetHistorialId, requests);
+
+  return codigoLimpio;
+}
+
+/** Elimina una cama: borra TODAS sus filas del historial. */
+export async function eliminarProyecto(codigo: string): Promise<void> {
+  const registros = await getHistorial();
+  const filas = registros.filter((r) => r.codigo === codigo);
+  if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
+  const sheetId = await sheetIdHistorial();
+  const requests = filas.map((r) => r.fila).sort((a, b) => b - a)
+    .map((fila) => ({ deleteDimension: { range: { sheetId, dimension: 'ROWS' as const, startIndex: fila - 1, endIndex: fila } } }));
+  await batchUpdateCliente(config.sheetHistorialId, requests);
+}
+
 export async function finalizarProyectoEnHistorial(
   codigo: string, resultado: string, desperdicio: number | '', comentarios: string,
 ): Promise<RegistroHistorial[]> {
@@ -326,10 +450,7 @@ export async function asegurarInventario(): Promise<void> {
     if (!existentes.has(tab)) requests.push({ addSheet: { properties: { title: tab } } });
   }
   if (requests.length > 0) {
-    await cliente().spreadsheets.batchUpdate({
-      spreadsheetId: config.sheetInventarioId,
-      requestBody: { requests },
-    });
+    await batchUpdateCliente(config.sheetInventarioId, requests);
   }
   for (const [tab, headers] of Object.entries(TABS_INVENTARIO)) {
     const fila1 = await leerRango(config.sheetInventarioId, `'${tab}'!A1:Z1`);
@@ -389,14 +510,7 @@ export async function eliminarFilamento(id: string): Promise<void> {
   const idx = filas.findIndex((f) => f[0] === id);
   if (idx === -1) throw new Error(`Filamento ${id} no encontrado`);
   const sheetId = await sheetIdPorTitulo('Filamentos');
-  await cliente().spreadsheets.batchUpdate({
-    spreadsheetId: config.sheetInventarioId,
-    requestBody: {
-      requests: [{
-        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } },
-      }],
-    },
-  });
+  await batchUpdateCliente(config.sheetInventarioId, [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }]);
 }
 
 export async function getMovimientos(): Promise<MovimientoInventario[]> {
@@ -434,6 +548,15 @@ export async function guardarImpresora(imp: Impresora, esNueva: boolean): Promis
   const idx = filas.findIndex((f) => f[0] === imp.id);
   if (idx === -1) throw new Error(`Impresora ${imp.id} no encontrada`);
   await escribirRango(config.sheetInventarioId, `'Impresoras'!A${idx + 2}:F${idx + 2}`, [valores]);
+}
+
+export async function eliminarImpresora(id: string): Promise<void> {
+  await asegurarInventario();
+  const filas = await leerRango(config.sheetInventarioId, `'Impresoras'!A2:A`);
+  const idx = filas.findIndex((f) => f[0] === id);
+  if (idx === -1) throw new Error(`Impresora ${id} no encontrada`);
+  const sheetId = await sheetIdPorTitulo('Impresoras');
+  await batchUpdateCliente(config.sheetInventarioId, [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }]);
 }
 
 export async function getMantenimientos(): Promise<Mantenimiento[]> {
@@ -479,14 +602,7 @@ export async function eliminarMantenimiento(fila: number): Promise<void> {
   await asegurarInventario();
   if (!fila || fila < 2) throw new Error('Registro de mantenimiento no identificado; actualiza la vista.');
   const sheetId = await sheetIdPorTitulo('Mantenimiento');
-  await cliente().spreadsheets.batchUpdate({
-    spreadsheetId: config.sheetInventarioId,
-    requestBody: {
-      requests: [{
-        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila } },
-      }],
-    },
-  });
+  await batchUpdateCliente(config.sheetInventarioId, [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila } } }]);
 }
 
 // --- Umbrales de alerta (pestaña "Umbrales") -------------------------------
@@ -534,12 +650,5 @@ export async function eliminarUmbral(id: string): Promise<void> {
   const idx = filas.findIndex((f) => f[0] === id);
   if (idx === -1) throw new Error(`Umbral ${id} no encontrado`);
   const sheetId = await sheetIdPorTitulo('Umbrales');
-  await cliente().spreadsheets.batchUpdate({
-    spreadsheetId: config.sheetInventarioId,
-    requestBody: {
-      requests: [{
-        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } },
-      }],
-    },
-  });
+  await batchUpdateCliente(config.sheetInventarioId, [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }]);
 }

@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react';
 import { EstadoSolicitud, Solicitud } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
 
 const ESTADOS: EstadoSolicitud[] = ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'];
 
@@ -19,6 +19,8 @@ export default function PaginaSolicitudes() {
   const [flujoCorreo, setFlujoCorreo] = useState<{ solicitud: Solicitud; estadoNuevo: EstadoSolicitud } | null>(null);
   const [confirmarNotif, setConfirmarNotif] = useState<{ solicitud: Solicitud; estadoNuevo: EstadoSolicitud } | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
+  const [editarSol, setEditarSol] = useState<Solicitud | null>(null);
+  const [porEliminar, setPorEliminar] = useState<Solicitud | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
   const solicitudes = datos?.solicitudes ?? [];
@@ -53,6 +55,19 @@ export default function PaginaSolicitudes() {
       setMensaje({ tipo: 'ok', texto: `Estado de ${s.nombre} actualizado a "${estado}".` });
       recargar();
       setConfirmarNotif({ solicitud: s, estadoNuevo: estado });
+    } catch (e) {
+      setMensaje({ tipo: 'error', texto: (e as Error).message });
+    }
+  }
+
+  async function hacerEliminar(s: Solicitud) {
+    try {
+      const res = await fetch(`/api/solicitudes?id=${encodeURIComponent(s.id)}&fila=${s.fila}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando la solicitud');
+      setMensaje({ tipo: 'ok', texto: `Solicitud de ${s.nombre} eliminada.` });
+      setPorEliminar(null);
+      recargar();
     } catch (e) {
       setMensaje({ tipo: 'error', texto: (e as Error).message });
     }
@@ -100,6 +115,7 @@ export default function PaginaSolicitudes() {
                   <th className="th">Pieza a imprimir</th>
                   <th className="th">Fecha tentativa</th>
                   <th className="th">Estado</th>
+                  <th className="th text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -119,10 +135,13 @@ export default function PaginaSolicitudes() {
                         {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
                       </select>
                     </td>
+                    <td className="td" onClick={(e) => e.stopPropagation()}>
+                      <AccionesFila onEditar={() => setEditarSol(s)} onEliminar={() => setPorEliminar(s)} />
+                    </td>
                   </tr>
                 ))}
                 {filtradas.length === 0 && (
-                  <tr><td colSpan={6} className="td py-8 text-center text-slate-500">No hay solicitudes que coincidan con los filtros.</td></tr>
+                  <tr><td colSpan={7} className="td py-8 text-center text-slate-500">No hay solicitudes que coincidan con los filtros.</td></tr>
                 )}
               </tbody>
             </table>
@@ -187,6 +206,25 @@ export default function PaginaSolicitudes() {
           onCerrar={() => setModalNueva(false)}
           onCreada={(texto) => { setMensaje({ tipo: 'ok', texto }); recargar(); }}
         />
+      )}
+
+      {editarSol && (
+        <ModalNuevaSolicitud
+          editar={editarSol}
+          onCerrar={() => setEditarSol(null)}
+          onCreada={(texto) => { setMensaje({ tipo: 'ok', texto }); recargar(); }}
+        />
+      )}
+
+      {porEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar solicitud" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setPorEliminar(null)}
+          onConfirmar={() => hacerEliminar(porEliminar)}
+        >
+          ¿Eliminar la solicitud de <b>{porEliminar.nombre}</b> ({porEliminar.marcaTemporal})? Se borrará de la hoja de respuestas. Esta acción no se puede deshacer.
+        </ModalConfirmar>
       )}
     </div>
   );
@@ -349,13 +387,53 @@ const PROGRAMAS = [
   'Ingeniería de Minas y Metalurgia', 'Ingeniería de Sistemas e Informática',
 ];
 
-function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (texto: string) => void }) {
-  const [f, setF] = useState({
+function ModalNuevaSolicitud({ editar, onCerrar, onCreada }: { editar?: Solicitud | null; onCerrar: () => void; onCreada: (texto: string) => void }) {
+  const esEdicion = !!editar;
+  const [f, setF] = useState(() => (editar ? {
+    nombre: editar.nombre, correo: editar.correo, celular: editar.celular,
+    rol: editar.rol || ROLES[0], programa: editar.programa, motivo: editar.motivo || MOTIVOS[0],
+    servicio: editar.servicio || SERVICIOS[0], descripcionPieza: editar.descripcionPieza,
+    objetivoPieza: editar.objetivoPieza, fechaTentativa: editar.fechaTentativa,
+  } : {
     nombre: '', correo: '', celular: '', rol: ROLES[0], programa: '', motivo: MOTIVOS[0],
     servicio: SERVICIOS[0], descripcionPieza: '', objetivoPieza: '', fechaTentativa: '',
-  });
+  }));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+  // En edición, mantiene seleccionable el valor actual aunque no esté en la lista.
+  const conActual = (lista: string[], actual: string) => (actual && !lista.includes(actual) ? [actual, ...lista] : lista);
+
+  const cambios = () => diffCampos([
+    { campo: 'Nombre', de: editar?.nombre, a: f.nombre },
+    { campo: 'Correo', de: editar?.correo, a: f.correo },
+    { campo: 'Celular', de: editar?.celular, a: f.celular },
+    { campo: 'Rol', de: editar?.rol, a: f.rol },
+    { campo: 'Programa', de: editar?.programa, a: f.programa },
+    { campo: 'Motivo', de: editar?.motivo, a: f.motivo },
+    { campo: 'Servicio', de: editar?.servicio, a: f.servicio },
+    { campo: 'Descripción de la pieza', de: editar?.descripcionPieza, a: f.descripcionPieza },
+    { campo: 'Objetivo de la pieza', de: editar?.objetivoPieza, a: f.objetivoPieza },
+    { campo: 'Fecha tentativa', de: editar?.fechaTentativa, a: f.fechaTentativa },
+  ]);
+
+  async function guardarEdicion() {
+    setEnviando(true);
+    setError('');
+    try {
+      const sol = { ...editar!, ...f, contacto: f.correo };
+      const res = await fetch('/api/solicitudes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sol) });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error guardando');
+      onCreada(`Solicitud de ${f.nombre} actualizada.`);
+      onCerrar();
+    } catch (e) {
+      setResumen(null);
+      setError((e as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF({ ...f, [k]: e.target.value });
 
@@ -382,8 +460,17 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
     }
   }
 
+  if (resumen) {
+    return (
+      <ModalConfirmarCambios
+        abierto titulo={`Confirmar cambios · ${editar!.nombre}`} cambios={resumen} guardando={enviando}
+        onVolver={() => setResumen(null)} onConfirmar={guardarEdicion}
+      />
+    );
+  }
+
   return (
-    <Modal abierto onCerrar={onCerrar} titulo="Nueva solicitud de impresión / modelado 3D" ancho="max-w-3xl">
+    <Modal abierto onCerrar={onCerrar} titulo={esEdicion ? 'Editar solicitud' : 'Nueva solicitud de impresión / modelado 3D'} ancho="max-w-3xl">
       <div className="space-y-4">
         {error && <Aviso tipo="error">{error}</Aviso>}
         <div className="grid gap-3 md:grid-cols-2">
@@ -410,7 +497,7 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
                 setF({ ...f, rol, programa: habilita ? f.programa : '' });
               }}
             >
-              {ROLES.map((r) => <option key={r}>{r}</option>)}
+              {conActual(ROLES, f.rol).map((r) => <option key={r}>{r}</option>)}
             </select>
           </div>
           <div>
@@ -422,16 +509,16 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
               disabled={!programaHabilitado}
             >
               <option value="">{programaHabilitado ? 'Seleccione el programa…' : 'Solo aplica a Estudiante o Egresado(a)'}</option>
-              {PROGRAMAS.map((p) => <option key={p}>{p}</option>)}
+              {conActual(PROGRAMAS, f.programa).map((p) => <option key={p}>{p}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Motivo de la solicitud</label>
-            <select className="input" value={f.motivo} onChange={set('motivo')}>{MOTIVOS.map((m) => <option key={m}>{m}</option>)}</select>
+            <select className="input" value={f.motivo} onChange={set('motivo')}>{conActual(MOTIVOS, f.motivo).map((m) => <option key={m}>{m}</option>)}</select>
           </div>
           <div>
             <label className="label">Servicio</label>
-            <select className="input" value={f.servicio} onChange={set('servicio')}>{SERVICIOS.map((s) => <option key={s}>{s}</option>)}</select>
+            <select className="input" value={f.servicio} onChange={set('servicio')}>{conActual(SERVICIOS, f.servicio).map((s) => <option key={s}>{s}</option>)}</select>
           </div>
           <div className="md:col-span-2">
             <label className="label">Descripción de la pieza</label>
@@ -448,8 +535,8 @@ function ModalNuevaSolicitud({ onCerrar, onCreada }: { onCerrar: () => void; onC
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={crear} disabled={enviando || !f.nombre.trim() || !f.correo.trim()}>
-            {enviando ? 'Enviando…' : 'Crear solicitud'}
+          <button className="btn-primary" onClick={esEdicion ? () => setResumen(cambios()) : crear} disabled={enviando || !f.nombre.trim() || !f.correo.trim()}>
+            {enviando ? 'Guardando…' : esEdicion ? 'Revisar cambios' : 'Crear solicitud'}
           </button>
         </div>
       </div>

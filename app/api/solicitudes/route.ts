@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSolicitudes } from '@/lib/datastore';
+import { getSolicitudes, actualizarSolicitud, eliminarSolicitud } from '@/lib/datastore';
 import { NuevaSolicitud } from '@/lib/google/forms';
 import { crearSolicitudEnHoja } from '@/lib/google/sheets';
 import { esModoDemo } from '@/lib/config';
 import { crearSolicitudDemo } from '@/lib/demo';
+import { Solicitud } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,33 @@ export async function POST(req: NextRequest) {
     }
     await crearSolicitudEnHoja(datos);
     return NextResponse.json({ ok: true, demo: false, mensaje: 'Solicitud registrada en la hoja. Aparecerá en la tabla en unos segundos.' });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
+
+/** Edita una solicitud existente (modifica sus columnas; el estado se cambia aparte). */
+export async function PATCH(req: NextRequest) {
+  try {
+    const sol = (await req.json()) as Solicitud;
+    if (!sol.id) return NextResponse.json({ error: 'Falta el identificador de la solicitud' }, { status: 400 });
+    if (!sol.nombre?.trim() || !sol.correo?.trim()) {
+      return NextResponse.json({ error: 'Nombre y correo electrónico son obligatorios' }, { status: 400 });
+    }
+    await actualizarSolicitud(sol);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Falta el identificador de la solicitud' }, { status: 400 });
+    await eliminarSolicitud(id, Number(url.searchParams.get('fila')) || 0);
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

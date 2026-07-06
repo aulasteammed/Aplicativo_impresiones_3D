@@ -116,6 +116,28 @@ export async function actualizarEstadoSolicitud(id: string, _fila: number, estad
   s.estado = estado;
 }
 
+/** Edita los campos de una solicitud (conserva id/marca temporal y estado). */
+export async function actualizarSolicitud(sol: Solicitud): Promise<void> {
+  const st = store();
+  const idx = st.solicitudes.findIndex((x) => x.id === sol.id);
+  if (idx === -1) throw new Error(`No se encontró la solicitud "${sol.id}"`);
+  const actual = st.solicitudes[idx];
+  st.solicitudes[idx] = {
+    ...actual,
+    nombre: sol.nombre, contacto: sol.correo, correo: sol.correo, celular: sol.celular,
+    rol: sol.rol, programa: sol.programa, motivo: sol.motivo, servicio: sol.servicio,
+    descripcionPieza: sol.descripcionPieza, objetivoPieza: sol.objetivoPieza,
+    archivos: sol.archivos ?? actual.archivos, fechaTentativa: sol.fechaTentativa,
+  };
+}
+
+export async function eliminarSolicitud(id: string, _fila: number): Promise<void> {
+  const st = store();
+  const idx = st.solicitudes.findIndex((x) => x.id === id);
+  if (idx === -1) throw new Error(`No se encontró la solicitud "${id}"`);
+  st.solicitudes.splice(idx, 1);
+}
+
 export async function crearSolicitudDemo(datos: Partial<Solicitud>): Promise<void> {
   const st = store();
   const ahora = new Date();
@@ -217,6 +239,47 @@ export async function actualizarEstadoProyecto(codigo: string, estado: EstadoPro
   }
 }
 
+/** Edición completa de una cama (reemplaza código, impresora e ítems). Conserva el estado. */
+export async function editarProyecto(
+  codigoOriginal: string, nuevoCodigo: string, impresora: string,
+  items: ItemProyecto[], solicitudes: Solicitud[],
+): Promise<string> {
+  const st = store();
+  const filasCama = st.historial.filter((r) => r.codigo === codigoOriginal);
+  if (filasCama.length === 0) throw new Error(`Cama ${codigoOriginal} no encontrada`);
+  if (items.length === 0) throw new Error('La cama debe tener al menos una solicitud.');
+  const estado = filasCama[0].estado || 'Activa';
+  const codigoLimpio = nuevoCodigo.trim();
+  if (codigoLimpio.toLowerCase() !== codigoOriginal.trim().toLowerCase()) {
+    const choca = st.historial.some((r) => r.codigo && r.codigo !== codigoOriginal
+      && (r.codigo ?? '').trim().toLowerCase() === codigoLimpio.toLowerCase());
+    if (choca) throw new Error(`Ya existe una cama con el código "${codigoLimpio}". Use otro código.`);
+  }
+  st.historial = st.historial.filter((r) => r.codigo !== codigoOriginal);
+  const porId = new Map(solicitudes.map((s) => [s.id, s]));
+  for (const it of items) {
+    const sol = porId.get(it.solicitudId);
+    st.historial.push({
+      fila: st.historial.length + 2,
+      marcaTemporal: it.solicitudId, codigo: codigoLimpio,
+      nombre: sol?.nombre ?? it.nombre, correo: sol?.correo ?? it.correo,
+      rol: sol?.rol ?? '', programa: sol?.programa ?? '', motivo: sol?.motivo ?? '', servicio: sol?.servicio ?? '',
+      descripcionPieza: sol?.descripcionPieza ?? it.descripcionPieza, objetivoPieza: sol?.objetivoPieza ?? '',
+      fechaTentativa: sol?.fechaTentativa ?? '', impresora,
+      tiempoHoras: String(it.tiempoHoras), gramos: String(it.gramos), material: it.material,
+      estado, resultado: '', desperdicio: '', comentarios: '', filamentoId: it.filamentoId ?? '',
+    });
+  }
+  return codigoLimpio;
+}
+
+export async function eliminarProyecto(codigo: string): Promise<void> {
+  const st = store();
+  const antes = st.historial.length;
+  st.historial = st.historial.filter((r) => r.codigo !== codigo);
+  if (st.historial.length === antes) throw new Error(`Cama ${codigo} no encontrada`);
+}
+
 export async function finalizarProyectoEnHistorial(
   codigo: string, resultado: string, desperdicio: number | '', comentarios: string,
 ): Promise<RegistroHistorial[]> {
@@ -274,6 +337,13 @@ export async function guardarImpresora(imp: Impresora, esNueva: boolean): Promis
   const idx = st.impresoras.findIndex((i) => i.id === imp.id);
   if (idx === -1) throw new Error(`Impresora ${imp.id} no encontrada`);
   st.impresoras[idx] = imp;
+}
+
+export async function eliminarImpresora(id: string): Promise<void> {
+  const st = store();
+  const idx = st.impresoras.findIndex((i) => i.id === id);
+  if (idx === -1) throw new Error(`Impresora ${id} no encontrada`);
+  st.impresoras.splice(idx, 1);
 }
 
 export async function getMantenimientos(): Promise<Mantenimiento[]> {

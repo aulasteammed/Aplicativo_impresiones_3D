@@ -12,6 +12,13 @@ export function normalizarEstado(valor: string | undefined | null): EstadoSolici
   return 'Nueva';
 }
 
+/** ¿La cama está en curso (Activa o En pausa)? Estas van a la ventana "Camas de
+ *  impresión"; una vez Finalizada, deja de mostrarse ahí y pasa a "Historial". */
+export function esCamaEnCurso(estado: string | null | undefined): boolean {
+  const e = (estado ?? '').trim().toLowerCase();
+  return e === 'activa' || e === 'en pausa';
+}
+
 /** Extrae la primera dirección de correo de un texto libre ("correo y número de contacto") */
 export function extraerCorreo(texto: string): string {
   const m = (texto ?? '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/);

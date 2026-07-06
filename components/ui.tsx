@@ -69,6 +69,75 @@ export function ModalConfirmar({
   );
 }
 
+/** Cambios de un formulario de edición (para el resumen de confirmación). Devuelve
+ *  solo los campos que cambiaron, ya formateados como texto. */
+export function diffCampos(
+  defs: { campo: string; de: unknown; a: unknown; fmt?: (v: any) => string }[],
+): { campo: string; de: string; a: string }[] {
+  const s = (v: unknown, f?: (v: any) => string) => (f ? f(v) : v == null || v === '' ? '' : String(v));
+  return defs
+    .filter((d) => s(d.de, d.fmt) !== s(d.a, d.fmt))
+    .map((d) => ({ campo: d.campo, de: s(d.de, d.fmt), a: s(d.a, d.fmt) }));
+}
+
+/** Ventana de confirmación de EDICIÓN con el resumen de cambios (mismo estilo que
+ *  ModalConfirmar). Se muestra siempre antes de aplicar una edición. */
+export function ModalConfirmarCambios({
+  abierto, titulo = 'Confirmar cambios', cambios, onConfirmar, onVolver, guardando, extra,
+}: {
+  abierto: boolean;
+  titulo?: string;
+  cambios: { campo: string; de: string; a: string }[];
+  onConfirmar: () => void;
+  onVolver: () => void;
+  guardando?: boolean;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <Modal abierto={abierto} onCerrar={onVolver} titulo={titulo} ancho="max-w-lg" centrado>
+      <div className="space-y-5">
+        <div className="flex gap-4">
+          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">✎</div>
+          <div className="min-w-0 text-sm text-slate-600">
+            {cambios.length === 0 ? (
+              <p>No se detectaron cambios respecto a los valores actuales.</p>
+            ) : (
+              <>
+                <p className="mb-2">Revisa los cambios antes de guardarlos:</p>
+                <ul className="space-y-1.5">
+                  {cambios.map((c, i) => (
+                    <li key={i} className="rounded-lg bg-slate-50 px-3 py-1.5">
+                      <span className="font-medium text-slate-700">{c.campo}:</span>{' '}
+                      <span className="text-slate-500 line-through decoration-slate-300">{c.de || '—'}</span>{' '}
+                      <span className="text-slate-400">→</span>{' '}
+                      <span className="font-medium text-steam-700">{c.a || '—'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {extra}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onVolver} disabled={guardando}>Volver a editar</button>
+          <button className="btn-primary" onClick={onConfirmar} disabled={guardando || cambios.length === 0}>{guardando ? 'Guardando…' : 'Confirmar cambios'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Botones de acción uniformes (Editar / Eliminar) para la columna "Acciones". */
+export function AccionesFila({ onEditar, onEliminar }: { onEditar?: () => void; onEliminar?: () => void }) {
+  return (
+    <div className="flex justify-end gap-1.5 whitespace-nowrap">
+      {onEditar && <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={onEditar}>Editar</button>}
+      {onEliminar && <button type="button" className="btn-secondary !px-2 !py-1 text-xs !text-rose-600" onClick={onEliminar}>Eliminar</button>}
+    </div>
+  );
+}
+
 const COLORES_ESTADO: Record<string, string> = {
   'Nueva': 'bg-blue-100 text-blue-700 ring-blue-200',
   'En Revisión': 'bg-amber-100 text-amber-700 ring-amber-200',
@@ -156,8 +225,16 @@ export function useDatos<T>(url: string, intervaloMs = 60_000) {
   useEffect(() => {
     montado.current = true;
     recargar();
-    const t = setInterval(recargar, intervaloMs);
-    return () => { montado.current = false; clearInterval(t); };
+    // No refresca cuando la pestaña está oculta (reduce lecturas de Google Sheets,
+    // que tiene cuota por minuto); al volver a la pestaña, refresca una vez.
+    const t = setInterval(() => { if (!document.hidden) recargar(); }, intervaloMs);
+    const alVolver = () => { if (!document.hidden) recargar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return () => {
+      montado.current = false;
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', alVolver);
+    };
   }, [recargar, intervaloMs]);
 
   return { datos, cargando, error, recargar };

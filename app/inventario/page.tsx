@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
 import { normalizarTexto, calcularAlertasAgregadas, formatCOP } from '@/lib/util';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
@@ -68,7 +68,10 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
   const [busqueda, setBusqueda] = useState('');
   const [editando, setEditando] = useState<Filamento | 'nuevo' | null>(null);
   const [verMovimientos, setVerMovimientos] = useState(false);
-  const [crearUmbral, setCrearUmbral] = useState(false);
+  const [editUmbral, setEditUmbral] = useState<UmbralAlerta | 'nuevo' | null>(null);
+  const [porEliminar, setPorEliminar] = useState<Filamento | null>(null);
+  const [umbralEliminar, setUmbralEliminar] = useState<UmbralAlerta | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   const filamentos = datos?.filamentos ?? [];
   const umbrales = dUmb?.umbrales ?? [];
@@ -82,32 +85,32 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 
   function refrescar() { recargar(); recargarMov(); recargarUmb(); }
 
-  async function eliminarUmbral(u: UmbralAlerta) {
-    const etiqueta = `${etiquetaVariable(u.variable)} = ${u.valor} (≤ ${u.umbralGramos} g)`;
-    if (!window.confirm(`¿Eliminar el umbral ${etiqueta}? Esta acción no se puede deshacer.`)) return;
+  async function hacerEliminarUmbral(u: UmbralAlerta) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/inventario/umbrales?id=${encodeURIComponent(u.id)}`, { method: 'DELETE' });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error eliminando el umbral');
       onMensaje({ tipo: 'ok', texto: 'Umbral de alerta eliminado.' });
+      setUmbralEliminar(null);
       recargarUmb(); recargar();
     } catch (e) {
       onMensaje({ tipo: 'error', texto: (e as Error).message });
-    }
+    } finally { setEliminando(false); }
   }
 
-  async function eliminarFilamento(f: Filamento) {
-    const etiqueta = `${f.id} (${f.tipo} ${f.color}${f.marca ? ` ${f.marca}` : ''})`;
-    if (!window.confirm(`¿Eliminar el filamento ${etiqueta}? Esta acción no se puede deshacer.`)) return;
+  async function hacerEliminarFilamento(f: Filamento) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/inventario/filamentos?id=${encodeURIComponent(f.id)}`, { method: 'DELETE' });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error eliminando el filamento');
       onMensaje({ tipo: 'ok', texto: `Filamento ${f.id} eliminado.` });
+      setPorEliminar(null);
       refrescar();
     } catch (e) {
       onMensaje({ tipo: 'error', texto: (e as Error).message });
-    }
+    } finally { setEliminando(false); }
   }
 
   return (
@@ -135,7 +138,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             <thead className="border-b border-slate-200">
               <tr>
                 <th className="th">ID</th><th className="th">Tipo</th><th className="th">Color</th><th className="th">Marca</th>
-                <th className="th">Rollos</th><th className="th">Comenzado</th><th className="th">Restante</th><th className="th">Estado</th><th className="th"></th>
+                <th className="th">Rollos</th><th className="th">Comenzado</th><th className="th">Restante</th><th className="th">Estado</th><th className="th text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -171,12 +174,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                         {bajo ? 'Stock bajo' : 'OK'}
                       </span>
                     </td>
-                    <td className="td">
-                      <div className="flex gap-1.5">
-                        <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setEditando(f)}>Editar</button>
-                        <button className="btn-secondary !px-2 !py-1 text-xs !text-rose-600" onClick={() => eliminarFilamento(f)}>Eliminar</button>
-                      </div>
-                    </td>
+                    <td className="td"><AccionesFila onEditar={() => setEditando(f)} onEliminar={() => setPorEliminar(f)} /></td>
                   </tr>
                 );
               })}
@@ -193,12 +191,12 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             <h2 className="font-semibold">Umbrales de alerta de stock</h2>
             <p className="text-xs text-slate-500">Un rollo se marca como “Stock bajo” cuando su color/marca/tipo coincide con una regla y su gramaje cae por debajo del umbral.</p>
           </div>
-          <button className="btn-secondary" onClick={() => setCrearUmbral(true)}>Crear umbral de alerta</button>
+          <button className="btn-secondary" onClick={() => setEditUmbral('nuevo')}>Crear umbral de alerta</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-slate-200">
-              <tr><th className="th">Variable</th><th className="th">Valor</th><th className="th">Umbral (g)</th><th className="th"></th></tr>
+              <tr><th className="th">Variable</th><th className="th">Valor</th><th className="th">Umbral (g)</th><th className="th text-right">Acciones</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {umbrales.map((u) => (
@@ -206,9 +204,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                   <td className="td">{etiquetaVariable(u.variable)}</td>
                   <td className="td font-medium">{u.valor}</td>
                   <td className="td">{u.umbralGramos} g</td>
-                  <td className="td text-right">
-                    <button className="btn-secondary !px-2 !py-1 text-xs !text-rose-600" onClick={() => eliminarUmbral(u)}>Eliminar</button>
-                  </td>
+                  <td className="td"><AccionesFila onEditar={() => setEditUmbral(u)} onEliminar={() => setUmbralEliminar(u)} /></td>
                 </tr>
               ))}
               {umbrales.length === 0 && <tr><td colSpan={4} className="td py-8 text-center text-slate-500">Sin umbrales definidos.</td></tr>}
@@ -263,12 +259,35 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
         />
       )}
 
-      {crearUmbral && (
+      {editUmbral && (
         <ModalUmbral
+          umbral={editUmbral === 'nuevo' ? null : editUmbral}
           filamentos={filamentos}
-          onCerrar={() => setCrearUmbral(false)}
+          onCerrar={() => setEditUmbral(null)}
           onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargarUmb(); recargar(); }}
         />
+      )}
+
+      {porEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar filamento" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setPorEliminar(null)}
+          onConfirmar={() => hacerEliminarFilamento(porEliminar)}
+        >
+          ¿Eliminar el filamento <b>{porEliminar.id}</b> ({porEliminar.tipo} {porEliminar.color}{porEliminar.marca ? ` ${porEliminar.marca}` : ''})? Esta acción no se puede deshacer.
+        </ModalConfirmar>
+      )}
+
+      {umbralEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar umbral" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setUmbralEliminar(null)}
+          onConfirmar={() => hacerEliminarUmbral(umbralEliminar)}
+        >
+          ¿Eliminar el umbral <b>{etiquetaVariable(umbralEliminar.variable)} = {umbralEliminar.valor}</b> (≤ {umbralEliminar.umbralGramos} g)? Esta acción no se puede deshacer.
+        </ModalConfirmar>
       )}
 
       <Modal abierto={verMovimientos} onCerrar={() => setVerMovimientos(false)} titulo="Movimientos de inventario" ancho="max-w-3xl">
@@ -314,6 +333,17 @@ function ModalFilamento({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [confirmacion, setConfirmacion] = useState<Filamento | null>(null);
+  const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+
+  const cambios = () => diffCampos([
+    { campo: 'Tipo', de: filamento?.tipo, a: f.tipo },
+    { campo: 'Color', de: filamento?.color, a: f.color },
+    { campo: 'Marca', de: filamento?.marca, a: f.marca },
+    { campo: 'Rollos', de: filamento?.rollos, a: f.rollos },
+    { campo: 'Comenzado', de: filamento?.comenzado, a: f.comenzado, fmt: (v) => (v ? 'Sí' : 'No') },
+    { campo: 'Gramos restantes', de: filamento?.gramosRestantes, a: f.gramosRestantes, fmt: (v) => `${Math.round(Number(v) || 0)} g` },
+    { campo: 'Notas', de: filamento?.notas, a: f.notas },
+  ]);
 
   // Sugerencias (no restringen la escritura): valores ya presentes en el inventario.
   const distintos = (sel: (x: Filamento) => string, base: string[] = []) =>
@@ -380,6 +410,15 @@ function ModalFilamento({
     );
   }
 
+  if (resumen) {
+    return (
+      <ModalConfirmarCambios
+        abierto titulo={`Confirmar cambios · ${filamento!.id}`} cambios={resumen} guardando={guardando}
+        onVolver={() => setResumen(null)} onConfirmar={() => enviar()}
+      />
+    );
+  }
+
   return (
     <Modal abierto onCerrar={onCerrar} titulo={esNuevo ? 'Añadir filamento' : `Editar ${filamento!.id}`}>
       <div className="space-y-4">
@@ -430,8 +469,8 @@ function ModalFilamento({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={() => enviar()} disabled={guardando || !f.tipo.trim() || !f.color.trim() || !f.marca.trim() || (esNuevo && totalNuevo <= 0)}>
-            {guardando ? 'Guardando…' : 'Guardar'}
+          <button className="btn-primary" onClick={esNuevo ? () => enviar() : () => setResumen(cambios())} disabled={guardando || !f.tipo.trim() || !f.color.trim() || !f.marca.trim() || (esNuevo && totalNuevo <= 0)}>
+            {guardando ? 'Guardando…' : esNuevo ? 'Guardar' : 'Revisar cambios'}
           </button>
         </div>
       </div>
@@ -440,14 +479,37 @@ function ModalFilamento({
 }
 
 function ModalUmbral({
-  filamentos, onCerrar, onGuardado,
-}: { filamentos: Filamento[]; onCerrar: () => void; onGuardado: (texto: string) => void }) {
-  const [variable, setVariable] = useState<VariableUmbral>('tipo');
-  const [valor, setValor] = useState('');
-  const [umbralGramos, setUmbralGramos] = useState(200);
+  umbral, filamentos, onCerrar, onGuardado,
+}: { umbral: UmbralAlerta | null; filamentos: Filamento[]; onCerrar: () => void; onGuardado: (texto: string) => void }) {
+  const esEdicion = !!umbral;
+  const [variable, setVariable] = useState<VariableUmbral>(umbral?.variable ?? 'tipo');
+  const [valor, setValor] = useState(umbral?.valor ?? '');
+  const [umbralGramos, setUmbralGramos] = useState(umbral?.umbralGramos ?? 200);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [confirmacion, setConfirmacion] = useState<UmbralAlerta | null>(null);
+  const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+
+  const cambios = () => diffCampos([
+    { campo: 'Variable', de: umbral?.variable, a: variable, fmt: (v) => etiquetaVariable(v as VariableUmbral) },
+    { campo: 'Valor', de: umbral?.valor, a: valor },
+    { campo: 'Umbral (g)', de: umbral?.umbralGramos, a: umbralGramos, fmt: (v) => `${Number(v) || 0} g` },
+  ]);
+
+  async function guardarEdicion() {
+    setGuardando(true); setError('');
+    try {
+      const res = await fetch('/api/inventario/umbrales', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: umbral!.id, variable, valor, umbralGramos }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error guardando');
+      onGuardado(`Umbral de ${etiquetaVariable(variable)} = ${valor} actualizado (≤ ${umbralGramos} g).`);
+      onCerrar();
+    } catch (e) { setResumen(null); setError((e as Error).message); }
+    finally { setGuardando(false); }
+  }
 
   // Valores ya presentes en el inventario: solo sirven como SUGERENCIAS; el
   // usuario puede escribir uno nuevo (color/marca/tipo aún no registrado).
@@ -510,8 +572,17 @@ function ModalUmbral({
     );
   }
 
+  if (resumen) {
+    return (
+      <ModalConfirmarCambios
+        abierto titulo={`Confirmar cambios · ${umbral!.id}`} cambios={resumen} guardando={guardando}
+        onVolver={() => setResumen(null)} onConfirmar={guardarEdicion}
+      />
+    );
+  }
+
   return (
-    <Modal abierto onCerrar={onCerrar} titulo="Crear umbral de alerta">
+    <Modal abierto onCerrar={onCerrar} titulo={esEdicion ? 'Editar umbral de alerta' : 'Crear umbral de alerta'}>
       <div className="space-y-4">
         {error && <Aviso tipo="error">{error}</Aviso>}
         <div>
@@ -543,8 +614,8 @@ function ModalUmbral({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={() => guardar()} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
-            {guardando ? 'Guardando…' : 'Guardar'}
+          <button className="btn-primary" onClick={esEdicion ? () => setResumen(cambios()) : () => guardar()} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
+            {guardando ? 'Guardando…' : esEdicion ? 'Revisar cambios' : 'Guardar'}
           </button>
         </div>
       </div>
@@ -559,6 +630,18 @@ function ModalUmbral({
 function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; texto: string }) => void }) {
   const { datos, cargando, error, recargar } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras');
   const [editando, setEditando] = useState<Impresora | 'nueva' | null>(null);
+  const [porEliminar, setPorEliminar] = useState<Impresora | null>(null);
+
+  async function hacerEliminar(imp: Impresora) {
+    try {
+      const res = await fetch(`/api/inventario/impresoras?id=${encodeURIComponent(imp.id)}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Error eliminando la impresora');
+      onMensaje({ tipo: 'ok', texto: `Impresora ${imp.nombre} eliminada.` });
+      setPorEliminar(null);
+      recargar();
+    } catch (e) { onMensaje({ tipo: 'error', texto: (e as Error).message }); }
+  }
 
   return (
     <div className="card space-y-4">
@@ -582,7 +665,7 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             </div>
             <p className="mt-3 text-sm">⏱ <b>{imp.horasAcumuladas}</b> h de impresión acumuladas</p>
             {imp.notas && <p className="mt-1 text-xs text-slate-500">{imp.notas}</p>}
-            <button className="btn-secondary mt-3 !px-2 !py-1 text-xs" onClick={() => setEditando(imp)}>Editar</button>
+            <div className="mt-3"><AccionesFila onEditar={() => setEditando(imp)} onEliminar={() => setPorEliminar(imp)} /></div>
           </div>
         ))}
         {(datos?.impresoras ?? []).length === 0 && <p className="text-sm text-slate-500">Sin impresoras registradas.</p>}
@@ -594,6 +677,17 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
           onCerrar={() => setEditando(null)}
           onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargar(); }}
         />
+      )}
+
+      {porEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar impresora" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setPorEliminar(null)}
+          onConfirmar={() => hacerEliminar(porEliminar)}
+        >
+          ¿Eliminar la impresora <b>{porEliminar.nombre}</b> ({porEliminar.id})? Esta acción no se puede deshacer.
+        </ModalConfirmar>
       )}
     </div>
   );
@@ -612,6 +706,15 @@ function ModalImpresora({
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+
+  const cambios = () => diffCampos([
+    { campo: 'Nombre', de: impresora?.nombre, a: f.nombre },
+    { campo: 'Modelo', de: impresora?.modelo, a: f.modelo },
+    { campo: 'Estado', de: impresora?.estado, a: f.estado },
+    { campo: 'Horas acumuladas', de: impresora?.horasAcumuladas, a: f.horasAcumuladas, fmt: (v) => `${Number(v) || 0} h` },
+    { campo: 'Notas', de: impresora?.notas, a: f.notas },
+  ]);
 
   async function guardar() {
     setGuardando(true);
@@ -633,6 +736,15 @@ function ModalImpresora({
     }
   }
 
+  if (resumen) {
+    return (
+      <ModalConfirmarCambios
+        abierto titulo={`Confirmar cambios · ${impresora!.nombre}`} cambios={resumen} guardando={guardando}
+        onVolver={() => setResumen(null)} onConfirmar={guardar}
+      />
+    );
+  }
+
   return (
     <Modal abierto onCerrar={onCerrar} titulo={esNueva ? 'Añadir impresora' : `Editar ${impresora!.nombre}`}>
       <div className="space-y-4">
@@ -651,7 +763,7 @@ function ModalImpresora({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={guardar} disabled={guardando || !f.nombre.trim()}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button className="btn-primary" onClick={esNueva ? guardar : () => setResumen(cambios())} disabled={guardando || !f.nombre.trim()}>{guardando ? 'Guardando…' : esNueva ? 'Guardar' : 'Revisar cambios'}</button>
         </div>
       </div>
     </Modal>
@@ -666,14 +778,15 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
   const { datos, cargando, error, recargar } = useDatos<{ mantenimientos: Mantenimiento[] }>('/api/inventario/mantenimiento');
   const { datos: dImp } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras', 5 * 60_000);
   const [modal, setModal] = useState<Mantenimiento | 'nuevo' | null>(null);
+  const [porEliminar, setPorEliminar] = useState<Mantenimiento | null>(null);
 
-  async function eliminar(m: Mantenimiento) {
-    if (!window.confirm('¿Eliminar este registro de mantenimiento? Esta acción no se puede deshacer.')) return;
+  async function hacerEliminar(m: Mantenimiento) {
     try {
       const res = await fetch(`/api/inventario/mantenimiento?fila=${m.fila}`, { method: 'DELETE' });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error eliminando');
       onMensaje({ tipo: 'ok', texto: 'Registro de mantenimiento eliminado.' });
+      setPorEliminar(null);
       recargar();
     } catch (e) {
       onMensaje({ tipo: 'error', texto: (e as Error).message });
@@ -705,10 +818,7 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
                 <td className="td whitespace-nowrap">{m.costo ? formatCOP(m.costo) : '—'}</td>
                 <td className="td">{m.responsable || '—'}</td>
                 <td className="td text-xs whitespace-nowrap">{m.programacion === 'fecha' ? `📅 ${m.proximaFecha}` : m.programacion === 'horas' ? `⏱ cada ${m.cadaHoras} h` : '—'}</td>
-                <td className="td whitespace-nowrap text-right">
-                  <button className="text-steam-600 hover:underline text-xs font-medium" onClick={() => setModal(m)}>Editar</button>
-                  <button className="text-rose-600 hover:underline text-xs font-medium ml-3" onClick={() => eliminar(m)}>Eliminar</button>
-                </td>
+                <td className="td"><AccionesFila onEditar={() => setModal(m)} onEliminar={() => setPorEliminar(m)} /></td>
               </tr>
             ))}
             {(datos?.mantenimientos ?? []).length === 0 && <tr><td colSpan={8} className="td py-8 text-center text-slate-500">Sin registros de mantenimiento.</td></tr>}
@@ -723,6 +833,17 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
           onCerrar={() => setModal(null)}
           onGuardado={(t) => { onMensaje({ tipo: 'ok', texto: t }); recargar(); }}
         />
+      )}
+
+      {porEliminar && (
+        <ModalConfirmar
+          abierto titulo="Eliminar mantenimiento" icono="🗑️" tono="danger"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          onCancelar={() => setPorEliminar(null)}
+          onConfirmar={() => hacerEliminar(porEliminar)}
+        >
+          ¿Eliminar el registro de mantenimiento de <b>{porEliminar.fecha}</b> ({porEliminar.tipo} — {porEliminar.descripcion})? Esta acción no se puede deshacer.
+        </ModalConfirmar>
       )}
     </div>
   );
@@ -744,6 +865,19 @@ function ModalMantenimiento({
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+
+  const cambios = () => diffCampos([
+    { campo: 'Fecha', de: editar?.fecha, a: f.fecha },
+    { campo: 'Impresora', de: editar?.impresoraId, a: f.impresoraId },
+    { campo: 'Tipo', de: editar?.tipo, a: f.tipo },
+    { campo: 'Descripción', de: editar?.descripcion, a: f.descripcion },
+    { campo: 'Costo (COP)', de: editar?.costo ?? 0, a: f.costo ? parseFloat(f.costo) : 0, fmt: (v) => (Number(v) ? formatCOP(Number(v)) : '—') },
+    { campo: 'Responsable', de: editar?.responsable, a: f.responsable },
+    { campo: 'Programación', de: editar?.programacion || 'ninguna', a: f.programacion },
+    { campo: 'Próxima fecha', de: editar?.proximaFecha, a: f.programacion === 'fecha' ? f.proximaFecha : '' },
+    { campo: 'Cada N horas', de: editar?.cadaHoras ?? '', a: f.programacion === 'horas' && f.cadaHoras ? parseFloat(f.cadaHoras) : '' },
+  ]);
 
   async function guardar() {
     setGuardando(true);
@@ -769,6 +903,15 @@ function ModalMantenimiento({
     } finally {
       setGuardando(false);
     }
+  }
+
+  if (resumen) {
+    return (
+      <ModalConfirmarCambios
+        abierto titulo="Confirmar cambios · mantenimiento" cambios={resumen} guardando={guardando}
+        onVolver={() => setResumen(null)} onConfirmar={guardar}
+      />
+    );
   }
 
   return (
@@ -816,7 +959,7 @@ function ModalMantenimiento({
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={guardar} disabled={guardando || !f.descripcion.trim() || !f.impresoraId || (f.programacion === 'fecha' && !f.proximaFecha) || (f.programacion === 'horas' && !f.cadaHoras)}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button className="btn-primary" onClick={editar ? () => setResumen(cambios()) : guardar} disabled={guardando || !f.descripcion.trim() || !f.impresoraId || (f.programacion === 'fecha' && !f.proximaFecha) || (f.programacion === 'horas' && !f.cadaHoras)}>{guardando ? 'Guardando…' : editar ? 'Revisar cambios' : 'Guardar'}</button>
         </div>
       </div>
     </Modal>

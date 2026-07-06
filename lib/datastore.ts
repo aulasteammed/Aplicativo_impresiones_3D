@@ -29,6 +29,14 @@ export async function cambiarEstadoSolicitud(id: string, fila: number, estado: E
   await backend().actualizarEstadoSolicitud(id, fila, estado);
 }
 
+export async function actualizarSolicitud(sol: Solicitud): Promise<void> {
+  await backend().actualizarSolicitud(sol);
+}
+
+export async function eliminarSolicitud(id: string, fila: number): Promise<void> {
+  await backend().eliminarSolicitud(id, fila);
+}
+
 // --- Proyectos / Historial ---------------------------------------------------
 
 export async function getHistorial(): Promise<RegistroHistorial[]> {
@@ -51,6 +59,18 @@ export async function agregarItemsProyecto(codigo: string, items: ItemProyecto[]
 
 export async function cambiarEstadoProyecto(codigo: string, estado: EstadoProyecto): Promise<void> {
   await backend().actualizarEstadoProyecto(codigo, estado);
+}
+
+/** Edición completa de una cama: reemplaza código, impresora y el conjunto de ítems. */
+export async function editarProyecto(
+  codigoOriginal: string, nuevoCodigo: string, impresora: string, items: ItemProyecto[],
+): Promise<string> {
+  const solicitudes = await backend().getSolicitudes();
+  return backend().editarProyecto(codigoOriginal, nuevoCodigo, impresora, items, solicitudes);
+}
+
+export async function eliminarProyecto(codigo: string): Promise<void> {
+  await backend().eliminarProyecto(codigo);
 }
 
 /**
@@ -299,6 +319,10 @@ export async function actualizarImpresora(imp: Impresora): Promise<void> {
   await backend().guardarImpresora(imp, false);
 }
 
+export async function eliminarImpresora(id: string): Promise<void> {
+  await backend().eliminarImpresora(id);
+}
+
 export async function getMantenimientos(): Promise<Mantenimiento[]> {
   return backend().getMantenimientos();
 }
@@ -433,6 +457,11 @@ export async function crearUmbral(
 
 export async function eliminarUmbral(id: string): Promise<void> {
   await backend().eliminarUmbral(id);
+}
+
+/** Edita un umbral existente (variable, valor y/o gramaje). */
+export async function actualizarUmbral(u: UmbralAlerta): Promise<void> {
+  await backend().actualizarUmbral(u);
 }
 
 // --- Dashboard ---------------------------------------------------------------
