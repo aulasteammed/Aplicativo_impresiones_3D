@@ -6,9 +6,9 @@ import { config } from '../config';
 import {
   Solicitud, RegistroHistorial, Proyecto, ItemProyecto, EstadoSolicitud,
   Filamento, MovimientoInventario, Impresora, Mantenimiento, EstadoProyecto, UmbralAlerta,
+  NuevaSolicitud,
 } from '../types';
-import { normalizarEstado, extraerCorreo, num } from '../util';
-import { NuevaSolicitud } from './forms';
+import { normalizarEstado, extraerCorreo, num, marcaTemporalColombia } from '../util';
 
 // Estado COMPARTIDO vía globalThis: sobrevive al hot-reload del dev server y, sobre
 // todo, se comparte entre todas las rutas del servidor (Next empaqueta cada ruta por
@@ -156,8 +156,7 @@ function filaASolicitud(f: string[], fila: number): Solicitud {
  *  y M (estado) vacías → la app la muestra como estado "Nueva". Devuelve la marca
  *  temporal generada, que funciona como identificador de la solicitud. */
 export async function crearSolicitudEnHoja(datos: NuevaSolicitud): Promise<string> {
-  const ahora = new Date();
-  const marca = `${String(ahora.getDate()).padStart(2, '0')}/${String(ahora.getMonth() + 1).padStart(2, '0')}/${ahora.getFullYear()} ${ahora.toTimeString().slice(0, 8)}`;
+  const marca = marcaTemporalColombia();
   const fila: (string | number)[] = [
     marca,                  // A marca temporal (id de la solicitud)
     datos.nombre,           // B nombre
@@ -180,16 +179,8 @@ export async function crearSolicitudEnHoja(datos: NuevaSolicitud): Promise<strin
 /** Actualiza la columna M (estado) verificando que la fila siga correspondiendo
  *  a la marca temporal; si la fila se movió, la vuelve a buscar. */
 export async function actualizarEstadoSolicitud(id: string, fila: number, estado: EstadoSolicitud): Promise<void> {
-  const tab = config.tabSolicitudes;
-  const verif = await leerRango(config.sheetSolicitudesId, `'${tab}'!A${fila}:A${fila}`);
-  let filaReal = fila;
-  if ((verif[0]?.[0] ?? '') !== id) {
-    const todas = await leerRango(config.sheetSolicitudesId, `'${tab}'!A2:A`);
-    const idx = todas.findIndex((r) => (r[0] ?? '') === id);
-    if (idx === -1) throw new Error(`No se encontró la solicitud con marca temporal "${id}"`);
-    filaReal = idx + 2;
-  }
-  await escribirRango(config.sheetSolicitudesId, `'${tab}'!M${filaReal}`, [[estado]]);
+  const filaReal = await filaRealSolicitud(id, fila);
+  await escribirRango(config.sheetSolicitudesId, `'${config.tabSolicitudes}'!M${filaReal}`, [[estado]]);
 }
 
 /** sheetId (gid) de una pestaña dentro de un spreadsheet dado (para borrar filas). */
@@ -204,8 +195,12 @@ async function sheetIdEn(spreadsheetId: string, titulo: string): Promise<number>
 /** Ubica la fila real de una solicitud por su marca temporal (id), re-buscándola si se movió. */
 async function filaRealSolicitud(id: string, fila: number): Promise<number> {
   const tab = config.tabSolicitudes;
-  const verif = await leerRango(config.sheetSolicitudesId, `'${tab}'!A${fila}:A${fila}`);
-  if ((verif[0]?.[0] ?? '') === id) return fila;
+  // La lectura puntual solo es válida para filas de datos (>= 2). Si no se conoce
+  // la fila (0/1), se busca directamente por marca temporal en toda la columna A.
+  if (fila >= 2) {
+    const verif = await leerRango(config.sheetSolicitudesId, `'${tab}'!A${fila}:A${fila}`);
+    if ((verif[0]?.[0] ?? '') === id) return fila;
+  }
   const todas = await leerRango(config.sheetSolicitudesId, `'${tab}'!A2:A`);
   const idx = todas.findIndex((r) => (r[0] ?? '') === id);
   if (idx === -1) throw new Error(`No se encontró la solicitud con marca temporal "${id}"`);
@@ -297,10 +292,6 @@ export function agruparProyectos(registros: RegistroHistorial[]): Proyecto[] {
     });
   }
   return Array.from(mapa.values()).reverse(); // más recientes primero
-}
-
-export async function getProyectos(): Promise<Proyecto[]> {
-  return agruparProyectos(await getHistorial());
 }
 
 /** Garantiza el encabezado de la columna extra T (Filamento ID) */

@@ -29,6 +29,21 @@ export interface Solicitud {
   estado: EstadoSolicitud;
 }
 
+/** Datos de una solicitud nueva creada desde la app (se escriben directamente en
+ *  la hoja de respuestas; columna C = correo, columna L = celular). */
+export interface NuevaSolicitud {
+  nombre: string;
+  correo: string;   // "Correo electrónico" (columna C)
+  celular: string;  // "Número de celular de contacto" (columna L)
+  rol: string;
+  programa: string;
+  motivo: string;
+  servicio: string;
+  descripcionPieza: string;
+  objetivoPieza: string;
+  fechaTentativa: string; // YYYY-MM-DD
+}
+
 export interface ItemProyecto {
   /** Marca temporal de la solicitud original (vínculo con la hoja de respuestas) */
   solicitudId: string;
@@ -174,22 +189,6 @@ export interface AlertaUmbral {
   umbralGramos: number;
   rollos: number;      // cuántos filamentos contribuyen
   estado: 'debajo' | 'cerca';
-}
-
-export interface DashboardData {
-  solicitudesNuevas: number;
-  solicitudesTotal: number;
-  solicitudesEnRevision: number;
-  proyectosActivos: Proyecto[];
-  tasaExito: number | null; // % de impresiones exitosas (null si no hay datos)
-  totalFinalizadas: number;
-  desperdicioTotal: number;
-  materialConsumidoMes: number;
-  tiempoPorImpresora: { impresora: string; horas: number }[];
-  alertasUmbral: AlertaUmbral[];
-  alertasMantenimiento: AlertaMantenimiento[];
-  proximasEntregas: { nombre: string; pieza: string; fecha: string; estado: string }[];
-  esDemo: boolean;
 }
 
 // --- Datos crudos con forma para el Dashboard interactivo (filtrable) ----------

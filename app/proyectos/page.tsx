@@ -20,9 +20,11 @@ export default function PaginaProyectos() {
   const [editar, setEditar] = useState<Proyecto | null>(null);
   const [finalizar, setFinalizar] = useState<Proyecto | null>(null);
   const [porEliminar, setPorEliminar] = useState<Proyecto | null>(null);
+  const [eliminando, setEliminando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error' | 'alerta'; texto: string } | null>(null);
 
   async function hacerEliminar(p: Proyecto) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/proyectos/${encodeURIComponent(p.codigo)}`, { method: 'DELETE' });
       const body = await res.json();
@@ -32,7 +34,7 @@ export default function PaginaProyectos() {
       recargar();
     } catch (e) {
       setMensaje({ tipo: 'error', texto: (e as Error).message });
-    }
+    } finally { setEliminando(false); }
   }
 
   const proyectos = datos?.proyectos ?? [];
@@ -98,6 +100,10 @@ export default function PaginaProyectos() {
           </select>
         </div>
 
+        {cargando && !datos ? (
+          <p className="py-8 text-center text-slate-500">Cargando camas…</p>
+        ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-slate-200">
@@ -154,6 +160,8 @@ export default function PaginaProyectos() {
           </table>
         </div>
         <Paginacion total={filtrados.length} pagina={paginaActual} tamano={tamano} onPagina={setPagina} onTamano={setTamano} />
+        </>
+        )}
       </div>
 
       {/* Detalle */}
@@ -217,7 +225,7 @@ export default function PaginaProyectos() {
       {porEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar cama" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
         >

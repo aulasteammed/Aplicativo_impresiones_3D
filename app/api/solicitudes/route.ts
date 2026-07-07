@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSolicitudes, actualizarSolicitud, eliminarSolicitud } from '@/lib/datastore';
-import { NuevaSolicitud } from '@/lib/google/forms';
 import { crearSolicitudEnHoja } from '@/lib/google/sheets';
 import { esModoDemo } from '@/lib/config';
 import { crearSolicitudDemo } from '@/lib/demo';
-import { Solicitud } from '@/lib/types';
+import { Solicitud, NuevaSolicitud } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 

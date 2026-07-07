@@ -8,10 +8,10 @@ import * as demo from './demo';
 import {
   Solicitud, Proyecto, RegistroHistorial, EstadoSolicitud, EstadoProyecto,
   Filamento, MovimientoInventario, Impresora, Mantenimiento,
-  ItemProyecto, DashboardData, AlertaStock, ResultadoImpresion, UmbralAlerta,
+  ItemProyecto, AlertaStock, ResultadoImpresion, UmbralAlerta,
   DatosDashboard, SolicitudDash, HistorialDash, FilamentoDash,
 } from './types';
-import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein, calcularAlertasAgregadas, calcularAlertasMantenimiento } from './util';
+import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein } from './util';
 import { agruparProyectos } from './google/sheets';
 
 function backend() {
@@ -164,9 +164,10 @@ export async function finalizarProyecto(
   } else {
     for (const [filamentoId, aDescontar] of Array.from(descuentoPorRollo.entries())) {
       const fil = filamentos.find((f) => f.id === filamentoId)!;
-      fil.gramosRestantes = Math.max(0, fil.gramosRestantes - aDescontar);
-      fil.comenzado = true;
-      await b.guardarFilamento(fil, false);
+      // El movimiento (auditoría) se registra ANTES de descontar el rollo: si el
+      // descuento fallara, en el reintento la comprobación de idempotencia detecta
+      // el movimiento y NO vuelve a descontar (se prefiere el sub-descuento,
+      // visible y corregible, al doble descuento).
       await b.registrarMovimiento({
         fecha: hoyISO(),
         filamentoId,
@@ -174,6 +175,9 @@ export async function finalizarProyecto(
         gramos: -Math.round(aDescontar * 100) / 100,
         motivo: resultado === 'Exitoso' ? 'impresión' : 'desperdicio',
       });
+      fil.gramosRestantes = Math.max(0, fil.gramosRestantes - aDescontar);
+      fil.comenzado = true;
+      await b.guardarFilamento(fil, false);
     }
 
     if (impresora) {
@@ -464,60 +468,7 @@ export async function actualizarUmbral(u: UmbralAlerta): Promise<void> {
   await backend().actualizarUmbral(u);
 }
 
-// --- Dashboard ---------------------------------------------------------------
-
-export async function getDashboard(): Promise<DashboardData> {
-  const [solicitudes, historial, filamentos, movimientos, umbrales, impresoras, mantenimientos] = await Promise.all([
-    backend().getSolicitudes(),
-    backend().getHistorial(),
-    backend().getFilamentos(),
-    backend().getMovimientos(),
-    backend().getUmbrales(),
-    backend().getImpresoras(),
-    backend().getMantenimientos(),
-  ]);
-  const proyectos = agruparProyectos(historial);
-
-  const finalizadas = historial.filter((r) => (r.estado || '').toLowerCase() === 'finalizada' && r.resultado);
-  const exitosas = finalizadas.filter((r) => r.resultado === 'Exitoso').length;
-
-  const tiempoPorImpresoraMap = new Map<string, number>();
-  for (const r of historial) {
-    if (!r.impresora) continue;
-    const h = parsearHoras(r.tiempoHoras);
-    if (h <= 0) continue;
-    tiempoPorImpresoraMap.set(r.impresora, (tiempoPorImpresoraMap.get(r.impresora) ?? 0) + h);
-  }
-
-  const mesActual = hoyISO().slice(0, 7);
-  const materialConsumidoMes = movimientos
-    .filter((m) => m.gramos < 0 && String(m.fecha).startsWith(mesActual))
-    .reduce((acc, m) => acc + Math.abs(m.gramos), 0);
-
-  const pendientes = solicitudes.filter((s) => s.estado === 'Nueva' || s.estado === 'En Revisión' || s.estado === 'Aprobada');
-
-  return {
-    solicitudesNuevas: solicitudes.filter((s) => s.estado === 'Nueva').length,
-    solicitudesTotal: solicitudes.length,
-    solicitudesEnRevision: solicitudes.filter((s) => s.estado === 'En Revisión').length,
-    proyectosActivos: proyectos.filter((p) => p.estado !== 'Finalizada'),
-    tasaExito: finalizadas.length > 0 ? Math.round((exitosas / finalizadas.length) * 100) : null,
-    totalFinalizadas: finalizadas.length,
-    desperdicioTotal: historial.reduce((acc, r) => acc + num(r.desperdicio), 0),
-    materialConsumidoMes: Math.round(materialConsumidoMes),
-    tiempoPorImpresora: Array.from(tiempoPorImpresoraMap.entries()).map(([impresora, horas]) => ({
-      impresora, horas: Math.round(horas * 10) / 10,
-    })),
-    alertasUmbral: calcularAlertasAgregadas(filamentos, umbrales),
-    alertasMantenimiento: calcularAlertasMantenimiento(impresoras, mantenimientos, hoyISO()),
-    proximasEntregas: pendientes.slice(-8).reverse().map((s) => ({
-      nombre: s.nombre, pieza: s.descripcionPieza.slice(0, 80), fecha: s.fechaTentativa, estado: s.estado,
-    })),
-    esDemo: esModoDemo(),
-  };
-}
-
-// --- Datos crudos para el Dashboard interactivo (filtrable en el cliente) -----
+// --- Dashboard (datos crudos, filtrable en el cliente) -----------------------
 
 /** "DD/MM/YYYY …" o "YYYY-MM-…" → "YYYY-MM" (vacío si no se reconoce) */
 function mesDeFecha(fecha: string): string {
@@ -571,21 +522,33 @@ export async function getDatosDashboard(): Promise<DatosDashboard> {
     };
   });
 
-  const hist: HistorialDash[] = historial.map((r) => ({
-    mes: mesDeFecha(r.marcaTemporal),
-    nombre: r.nombre || '', correo: r.correo || '',
-    rol: r.rol || '(sin dato)',
-    programa: r.programa || '(sin programa)',
-    motivo: r.motivo || '(sin dato)',
-    servicio: r.servicio || '(sin dato)',
-    impresora: r.impresora || '(sin dato)',
-    material: r.material || '(sin dato)',
-    estado: r.estado || '(sin dato)',
-    resultado: r.resultado || '(en curso)',
-    gramos: num(r.gramos),
-    horas: parsearHoras(r.tiempoHoras),
-    desperdicio: num(r.desperdicio),
-  }));
+  // El desperdicio se reporta UNA sola vez por cama, pero se guarda igual en todas
+  // sus filas (una por pieza). Para que la suma del tablero no lo multiplique, se
+  // atribuye solo a la primera fila de cada código (0 en las demás).
+  const desperdicioVisto = new Set<string>();
+  const hist: HistorialDash[] = historial.map((r) => {
+    const cod = (r.codigo || '').trim();
+    let desperdicio = num(r.desperdicio);
+    if (cod) {
+      if (desperdicioVisto.has(cod)) desperdicio = 0;
+      else desperdicioVisto.add(cod);
+    }
+    return {
+      mes: mesDeFecha(r.marcaTemporal),
+      nombre: r.nombre || '', correo: r.correo || '',
+      rol: r.rol || '(sin dato)',
+      programa: r.programa || '(sin programa)',
+      motivo: r.motivo || '(sin dato)',
+      servicio: r.servicio || '(sin dato)',
+      impresora: r.impresora || '(sin dato)',
+      material: r.material || '(sin dato)',
+      estado: r.estado || '(sin dato)',
+      resultado: r.resultado || '(en curso)',
+      gramos: num(r.gramos),
+      horas: parsearHoras(r.tiempoHoras),
+      desperdicio,
+    };
+  });
 
   const fil: FilamentoDash[] = filamentos.map((f) => ({
     id: f.id, tipo: String(f.tipo), color: f.color, marca: f.marca,

@@ -6,7 +6,7 @@ import {
   Solicitud, RegistroHistorial, Filamento, MovimientoInventario,
   Impresora, Mantenimiento, EstadoSolicitud, EstadoProyecto, ItemProyecto, UmbralAlerta,
 } from './types';
-import { extraerCorreo, hoyISO } from './util';
+import { extraerCorreo, marcaTemporalColombia } from './util';
 
 interface DemoStore {
   solicitudes: Solicitud[];
@@ -140,8 +140,7 @@ export async function eliminarSolicitud(id: string, _fila: number): Promise<void
 
 export async function crearSolicitudDemo(datos: Partial<Solicitud>): Promise<void> {
   const st = store();
-  const ahora = new Date();
-  const marca = `${String(ahora.getDate()).padStart(2, '0')}/${String(ahora.getMonth() + 1).padStart(2, '0')}/${ahora.getFullYear()} ${ahora.toTimeString().slice(0, 8)}`;
+  const marca = marcaTemporalColombia();
   st.solicitudes.push({
     id: marca,
     fila: st.solicitudes.length + 2,

@@ -63,6 +63,21 @@ export function hoyISO(): string {
   return ahoraColombia().toISOString().slice(0, 10);
 }
 
+/** Marca temporal "DD/MM/YYYY HH:mm:ss" en hora de Colombia (UTC-5), con el mismo
+ *  formato que genera Google Forms. Se usa como id y fecha de las solicitudes
+ *  creadas desde la app, para que el mes al que se atribuyen no se desfase en un
+ *  servidor UTC (p. ej. Vercel). */
+export function marcaTemporalColombia(): string {
+  const d = ahoraColombia();
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mi = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
+}
+
 /** Normaliza una fecha en cualquiera de los formatos usados en el aplicativo a
  *  'YYYY-MM-DD'. Acepta ISO (2026-04-01[THH:mm...]) y formato Colombia del
  *  formulario (DD/MM/YYYY[ HH:mm:ss]). Devuelve '' si no logra interpretarla. */

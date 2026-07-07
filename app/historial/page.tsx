@@ -130,7 +130,7 @@ export default function PaginaHistorial() {
             <div className="col-span-2"><Campo etiqueta="Pieza" valor={detalle.descripcionPieza} /></div>
             <div className="col-span-2"><Campo etiqueta="Objetivo" valor={detalle.objetivoPieza} /></div>
             <Campo etiqueta="Impresora" valor={detalle.impresora} />
-            <Campo etiqueta="Tiempo / Material" valor={`${detalle.tiempoHoras || '—'} h · ${detalle.gramos || '—'} g ${detalle.material}`} />
+            <Campo etiqueta="Tiempo / Material" valor={`${detalle.tiempoHoras || '—'} h · ${detalle.gramos || '—'} g · ${detalle.material || '—'}`} />
             <Campo etiqueta="Estado / Resultado" valor={`${detalle.estado || '—'} / ${detalle.resultado || '—'}`} />
             <Campo etiqueta="Desperdicio" valor={detalle.desperdicio ? `${detalle.desperdicio} g` : '—'} />
             <div className="col-span-2"><Campo etiqueta="Comentarios" valor={detalle.comentarios || '—'} /></div>

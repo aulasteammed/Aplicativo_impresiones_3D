@@ -4,9 +4,10 @@ Aplicativo web para gestionar las **solicitudes**, **camas de impresión**, **hi
 
 Usa **Google Sheets como base de datos** (la hoja de respuestas del Google Forms + una hoja de historial + una hoja de inventario), envía **correos HTML** de notificación al solicitante vía **Google Apps Script**, y extrae parámetros de impresión de **capturas del slicer mediante OCR local** (Tesseract.js, sin IA ni servicios externos).
 
-- **Stack**: Next.js 14 (App Router) · React 18 · TypeScript · Tailwind · Recharts.
+- **Stack**: Next.js 14 (App Router) · React 18 · TypeScript · Tailwind (gráficos del dashboard en CSS/SVG propios).
 - **Google**: `googleapis` (service account) para leer/escribir los Sheets.
 - **OCR**: `tesseract.js` + `jimp` (corre en el servidor, local).
+- **Exportación**: `exceljs` para generar el archivo `.xlsx` de descarga.
 
 ---
 
@@ -28,11 +29,11 @@ Usa **Google Sheets como base de datos** (la hoja de respuestas del Google Forms
 
 | Ventana | Ruta | Función |
 |---|---|---|
-| 1. Dashboard | `/` | KPIs: solicitudes nuevas, tasa de éxito/fallo, tiempo por impresora, **alertas de stock por umbral**, camas activas, próximas entregas |
-| 2. Solicitudes | `/solicitudes` | Tabla conectada a la hoja de respuestas del Form: filtros, detalle, cambio de estado con **notificación por correo**, creación de solicitudes |
-| 3. Camas de impresión | `/proyectos` | Crea/edita **camas** sobre solicitudes aprobadas, **análisis OCR** de capturas del slicer, asignación de filamento del inventario, finalización con resultado/desperdicio/comentarios |
-| 4. Historial | `/historial` | Registro completo de impresiones (solo lectura) con filtros y KPIs |
-| 5. Inventario | `/inventario` | Filamentos (con **umbrales de alerta** por color/marca/tipo y movimientos), impresoras y mantenimiento |
+| 1. Dashboard | `/` | Tablero **interactivo con filtros** (mes, rol, programa, motivo, servicio): KPIs de solicitudes, producción, camas y mantenimiento; **alertas de stock** y de mantenimiento; botón **Exportar a Excel** (`.xlsx`) con filtro por rango de fechas |
+| 2. Solicitudes | `/solicitudes` | Tabla conectada a la hoja de respuestas del Form: filtros, orden inicial por estado, detalle, cambio de estado con **notificación por correo**, creación/edición/eliminación de solicitudes, **paginación** |
+| 3. Camas de impresión | `/proyectos` | Crea/edita **camas** sobre solicitudes aprobadas, **análisis OCR** de capturas del slicer, asignación de filamento del inventario, cambio de estado, finalización con resultado/desperdicio/comentarios, **paginación** |
+| 4. Historial | `/historial` | Registro de impresiones finalizadas (solo lectura) con filtros, KPIs y **paginación** |
+| 5. Inventario | `/inventario` | Filamentos (con **umbrales de alerta** por color/marca/tipo y movimientos), impresoras y mantenimiento (con **programación** de próximos mantenimientos). Editar/eliminar en todas las tablas |
 
 ---
 
@@ -100,40 +101,16 @@ Luego:
 
 > **Nombres de las pestañas**: por defecto la app espera la pestaña de solicitudes llamada `Respuestas de formulario 1` y la de historial `Historial`. Si las tuyas se llaman distinto, define `TAB_SOLICITUDES` / `TAB_HISTORIAL` en `.env.local`. Las 5 pestañas del inventario las crea la app automáticamente con sus nombres fijos.
 
-### Paso 3 — Google Form (crear solicitudes desde la app)
+> **Crear solicitudes desde la app**: no requiere configuración extra. La app escribe la solicitud **directamente en la hoja de respuestas** (columnas A–M), sin pasar por el Google Form. Por eso **la app lee y escribe la hoja por posición de columna**: el **correo debe estar en la columna C**, el **celular en la columna L** y la columna **M** queda reservada para el **estado**. No insertes ni muevas columnas dentro de ese rango. Ver [columnas](#estructura-de-los-google-sheets-columnas).
 
-Para que las solicitudes creadas dentro de la app queden como **respuestas reales del formulario** (y la hoja nunca se desincronice), la app envía al `formResponse` del Form. Debes obtener el **ID de cada pregunta** (`entry.XXXXXXX`):
-
-1. Abre el formulario en modo edición → botón **Enviar** → copia el enlace público.
-2. Método fácil: en el Form → menú **⋮ → Obtener enlace previamente rellenado**, llena todos los campos con textos de ejemplo, genera el enlace y **copia de la URL** los valores `entry.XXXX=` de cada pregunta.
-   - *Alternativo*: abre el enlace público → clic derecho → **Ver código fuente** → busca `entry.`.
-3. En `.env.local`:
-   - `FORM_URL`: el enlace público cambiando el final `/viewform` por `/formResponse`.
-   - Cada `FORM_ENTRY_*` con su `entry.XXXXXXX` correspondiente:
-
-| Variable | Pregunta del Form | Columna resultante |
-|---|---|---|
-| `FORM_ENTRY_NOMBRE` | Nombres y apellidos | B |
-| `FORM_ENTRY_CONTACTO` | **Correo electrónico** | C |
-| `FORM_ENTRY_ROL` | Rol | D |
-| `FORM_ENTRY_PROGRAMA` | Programa académico | E |
-| `FORM_ENTRY_MOTIVO` | Motivo | F |
-| `FORM_ENTRY_SERVICIO` | Servicio | G |
-| `FORM_ENTRY_DESCRIPCION` | Descripción de la pieza | H |
-| `FORM_ENTRY_OBJETIVO` | Objetivo de la pieza | I |
-| `FORM_ENTRY_FECHA` | Fecha tentativa (tipo fecha) | K |
-| `FORM_ENTRY_CELULAR` | **Número de celular de contacto** | L |
-
-> **Importante (orden de columnas)**: la app lee la hoja de solicitudes **por posición**. La pregunta de **correo debe quedar en la columna C** y la de **celular en la columna L** (esta última suele ser una pregunta agregada al final, por eso cae en L). La columna **M** la usa la app para el **estado**. Ver [columnas](#estructura-de-los-google-sheets-columnas).
-
-### Paso 4 — Análisis de capturas del slicer (OCR local)
+### Paso 3 — Análisis de capturas del slicer (OCR local)
 
 **No requiere configuración ni claves de API.** Al crear una cama puedes **subir capturas** del slicer (Bambu Studio, Cura, PrusaSlicer) y la app extrae **gramos, tiempo y material** con OCR (Tesseract.js) que corre localmente en el servidor —sin enviar nada afuera—.
 
 - La **primera vez** que se usa el OCR, descarga el modelo en inglés (~5 MB) y lo deja en caché (`*.traineddata`, ya ignorado por git).
 - Para mejores resultados, sube la captura **nítida y completa** del panel de resumen (p. ej. *Slicing Result* de Bambu o *Save to Disk* de Cura).
 
-### Paso 5 — Correo de notificación (Google Apps Script)
+### Paso 4 — Correo de notificación (Google Apps Script)
 
 La app **no** manda correo directamente: delega en un **Apps Script publicado como Web App** que corre con la sesión de la cuenta del aula y envía con `GmailApp` (así el correo sale desde el Gmail real del aula, sin exponer contraseñas). Este script **solo** envía la **notificación de cambio de estado al solicitante**.
 
@@ -165,28 +142,14 @@ SHEET_ID_INVENTARIO=
 # TAB_SOLICITUDES=Respuestas de formulario 1   # solo si tu pestaña se llama distinto
 # TAB_HISTORIAL=Historial
 
-# --- 2. Google Form (crear solicitudes desde la app) ---
-FORM_URL=                         # ...terminado en /formResponse
-FORM_ENTRY_NOMBRE=
-FORM_ENTRY_CONTACTO=              # pregunta "Correo electrónico" (col. C)
-FORM_ENTRY_CELULAR=               # pregunta "Número de celular" (col. L)
-FORM_ENTRY_ROL=
-FORM_ENTRY_PROGRAMA=
-FORM_ENTRY_MOTIVO=
-FORM_ENTRY_SERVICIO=
-FORM_ENTRY_DESCRIPCION=
-FORM_ENTRY_OBJETIVO=
-FORM_ENTRY_FECHA=
+# --- 2. OCR: sin configuración (local) ---
 
-# --- 3. OCR: sin configuración (local) ---
-
-# --- 4. Correo (Apps Script Web App) ---
+# --- 3. Correo (Apps Script Web App) ---
 APPS_SCRIPT_URL=
 APPS_SCRIPT_TOKEN=                # el mismo TOKEN_SECRETO de Codigo.gs
-# CORREO_AULA=Aula_steam_med@unal.edu.co
 ```
 
-**Modo demo vs real**: la app usa modo real solo si hay credenciales (`GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_APPLICATION_CREDENTIALS`) **y** los 3 `SHEET_ID_*`. Si falta cualquiera, corre en demo. El Form y el correo son opcionales: sin ellos, crear solicitudes y enviar correos quedan deshabilitados, pero el resto funciona con los Sheets.
+**Modo demo vs real**: la app usa modo real solo si hay credenciales (`GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_APPLICATION_CREDENTIALS`) **y** los 3 `SHEET_ID_*`. Si falta cualquiera, corre en demo. El correo es opcional: sin `APPS_SCRIPT_*` el cambio de estado se aplica igual, solo que no se envía la notificación. **Crear solicitudes no necesita configuración extra**: se escriben directamente en la hoja de respuestas.
 
 ---
 
@@ -251,8 +214,10 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
 
 ## Lógica de negocio importante
 
+- **Creación de solicitudes**: las solicitudes creadas desde la app se **escriben directamente en la hoja de respuestas** (columnas A–M), con marca temporal en **hora de Colombia (UTC-5)**. No se usa el `formResponse` del Google Form (su pregunta de subida de archivos rechaza el envío anónimo). El Google Form sigue existiendo para quien lo llene por fuera; ambas vías caen en la misma hoja.
 - **Estados de solicitud**: `Nueva` (celda vacía en la hoja), `En Revisión`, `Aprobada`, `Rechazada`, `Atendida`. El histórico "Aceptada" se interpreta como `Aprobada`. Solo las solicitudes **Aprobada** son elegibles para una cama. **Finalizar una cama NO cambia el estado** de sus solicitudes; el paso a `Atendida` lo hace el usuario manualmente en Solicitudes.
 - **Correo de notificación**: al cambiar el estado, la app pregunta si notificar. El destinatario viene de la **columna C** (correo), es **editable** y admite **varios correos** separados por comas.
+- **Paginación**: las tablas de Solicitudes, Camas e Historial se paginan (10/20/50/100 por página) y vuelven a la página 1 al cambiar filtros o búsqueda.
 - **Camas de impresión**: el **código** (`IMP-AAMMDD-NN`) es el identificador; se genera automático pero es **editable y único** al crear. El **tiempo** se ingresa/edita en **horas y minutos** (internamente se guarda en horas decimales). Se puede **asignar un filamento** del inventario por solicitud.
 - **Inventario — filamentos con tolerancia**: al añadir un filamento, si (tipo, color, marca) coincide con uno existente —tolerando mayúsculas, acentos y pequeños typos (distancia Damerau-Levenshtein)— la app **fusiona** (suma rollos/gramos) o **pregunta** si la coincidencia es solo aproximada. El total de un filamento nuevo = `rollos × 1000 g` + (opcional) gramos de rollos comenzados.
 - **Materiales canónicos**: el material escrito (o detectado por OCR) se normaliza a su forma canónica con la misma tolerancia (`petg`, `pteg` → `PETG`), para evitar duplicados en estadísticas.
@@ -261,9 +226,20 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
   - **Exitoso** → descuenta los gramos estimados de cada pieza + el desperdicio reportado (repartido proporcionalmente entre los rollos usados).
   - **Fallido** → descuenta solo el desperdicio reportado (o los gramos estimados si no se reportó).
   - Cada descuento queda en la pestaña `Movimientos` y suma horas a la impresora.
-- **Actualización "en vivo"**: cada tabla se refresca automáticamente (~60 s) y con el botón **Actualizar**.
+  - El desperdicio se reporta **una sola vez por cama** (aunque se guarde en cada fila de la cama); el Dashboard lo cuenta una sola vez para no inflar el total.
+- **Exportar a Excel**: desde el Dashboard, el botón **Exportar** genera un `.xlsx` (una hoja por conjunto: solicitudes, camas, historial, filamentos, mantenimiento) y permite acotar por **rango de fechas**.
+- **Actualización "en vivo"**: cada tabla se refresca automáticamente (~60 s, en pausa cuando la pestaña no está visible) y con el botón **Actualizar**.
 
 ---
+
+## Novedades (limpieza y correcciones — cierre de la v1.0)
+
+- **Correcciones de lógica**:
+  - El **desperdicio** ya no se multiplicaba por el número de piezas de una cama en el total del Dashboard.
+  - La **marca temporal** de las solicitudes creadas desde la app usa hora de Colombia (UTC-5), no la del servidor (evita que en producción una solicitud caiga en el mes equivocado).
+  - `finalizarProyecto` registra el **movimiento de inventario antes** de descontar el rollo, de modo que un fallo parcial deja la operación reintentable sin doble descuento.
+  - Robustez al editar/eliminar solicitudes cuando no se conoce la fila exacta; los diálogos de eliminación evitan el **doble envío**.
+- **Código y dependencias eliminados por no usarse**: envío al Google Form (`lib/google/forms.ts`) y sus variables `FORM_URL`/`FORM_ENTRY_*`; endpoint y función `getDashboard` (`/api/dashboard`) superados por el dashboard interactivo; dependencia `recharts`; variable `CORREO_AULA`. Ninguna funcionalidad del aplicativo se ve afectada.
 
 ## Despliegue
 
@@ -298,7 +274,6 @@ lib/
   util.ts          Utilidades: normalización, tolerancia difusa, materiales, alertas
   google/
     sheets.ts      Cliente de Google Sheets (lectura/escritura de las 3 hojas)
-    forms.ts       Envío de solicitudes nuevas al Google Form
   types.ts         Tipos compartidos
 components/         Sidebar y componentes UI compartidos
 apps-script/

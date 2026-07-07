@@ -37,7 +37,7 @@ export function Modal({
 /** Diálogo de confirmación centrado, con el mismo estilo y paleta del aplicativo. */
 export function ModalConfirmar({
   abierto, titulo, icono, confirmarTexto = 'Aceptar', cancelarTexto = 'Cancelar',
-  tono = 'primary', onConfirmar, onCancelar, children,
+  tono = 'primary', procesando = false, onConfirmar, onCancelar, children,
 }: {
   abierto: boolean;
   titulo: string;
@@ -45,6 +45,8 @@ export function ModalConfirmar({
   confirmarTexto?: string;
   cancelarTexto?: string;
   tono?: 'primary' | 'danger';
+  /** Deshabilita los botones mientras la acción está en curso (evita doble envío). */
+  procesando?: boolean;
   onConfirmar: () => void;
   onCancelar: () => void;
   children?: React.ReactNode;
@@ -61,8 +63,10 @@ export function ModalConfirmar({
           <div className="pt-0.5 text-sm leading-relaxed text-slate-600">{children}</div>
         </div>
         <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onCancelar}>{cancelarTexto}</button>
-          <button className={tono === 'danger' ? 'btn-danger' : 'btn-primary'} onClick={onConfirmar} autoFocus>{confirmarTexto}</button>
+          <button className="btn-secondary" onClick={onCancelar} disabled={procesando}>{cancelarTexto}</button>
+          <button className={tono === 'danger' ? 'btn-danger' : 'btn-primary'} onClick={onConfirmar} disabled={procesando} autoFocus>
+            {procesando ? 'Procesando…' : confirmarTexto}
+          </button>
         </div>
       </div>
     </Modal>

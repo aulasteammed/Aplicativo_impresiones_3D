@@ -30,6 +30,7 @@ export default function PaginaSolicitudes() {
   const [modalNueva, setModalNueva] = useState(false);
   const [editarSol, setEditarSol] = useState<Solicitud | null>(null);
   const [porEliminar, setPorEliminar] = useState<Solicitud | null>(null);
+  const [eliminando, setEliminando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
   const solicitudes = datos?.solicitudes ?? [];
@@ -84,6 +85,7 @@ export default function PaginaSolicitudes() {
   }
 
   async function hacerEliminar(s: Solicitud) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/solicitudes?id=${encodeURIComponent(s.id)}&fila=${s.fila}`, { method: 'DELETE' });
       const body = await res.json();
@@ -93,7 +95,7 @@ export default function PaginaSolicitudes() {
       recargar();
     } catch (e) {
       setMensaje({ tipo: 'error', texto: (e as Error).message });
-    }
+    } finally { setEliminando(false); }
   }
 
   return (
@@ -243,7 +245,7 @@ export default function PaginaSolicitudes() {
       {porEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar solicitud" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
         >

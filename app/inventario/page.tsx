@@ -3,10 +3,10 @@
 // Ventana 5 — Inventario: filamentos (con alertas de stock bajo y movimientos),
 // impresoras y su mantenimiento/consumibles/repuestos.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
-import { normalizarTexto, calcularAlertasAgregadas, formatCOP } from '@/lib/util';
+import { calcularAlertasAgregadas, formatCOP } from '@/lib/util';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
 
@@ -52,20 +52,14 @@ function etiquetaVariable(v: VariableUmbral): string {
   return v === 'color' ? 'Color' : v === 'marca' ? 'Marca' : 'Tipo de material';
 }
 
-/** Reglas de umbral que un filamento "rompe" (mismo criterio que el servidor):
- *  coincide el valor (normalizado) en su variable y el stock está por debajo. */
-function reglasRotas(f: Filamento, umbrales: UmbralAlerta[]): UmbralAlerta[] {
-  return umbrales.filter((u) => {
-    const valor = u.variable === 'color' ? f.color : u.variable === 'marca' ? f.marca : f.tipo;
-    return normalizarTexto(String(valor)) === normalizarTexto(u.valor) && f.gramosRestantes <= u.umbralGramos;
-  });
-}
-
 function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; texto: string }) => void }) {
   const { datos, cargando, error, recargar } = useDatos<{ filamentos: Filamento[]; alertas: AlertaStock[] }>('/api/inventario/filamentos');
   const { datos: dMov, recargar: recargarMov } = useDatos<{ movimientos: MovimientoInventario[] }>('/api/inventario/movimientos');
   const { datos: dUmb, recargar: recargarUmb } = useDatos<{ umbrales: UmbralAlerta[] }>('/api/inventario/umbrales');
   const [busqueda, setBusqueda] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroColor, setFiltroColor] = useState('');
+  const [filtroMarca, setFiltroMarca] = useState('');
   const [editando, setEditando] = useState<Filamento | 'nuevo' | null>(null);
   const [verMovimientos, setVerMovimientos] = useState(false);
   const [editUmbral, setEditUmbral] = useState<UmbralAlerta | 'nuevo' | null>(null);
@@ -77,11 +71,21 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
   const umbrales = dUmb?.umbrales ?? [];
   const idsBajo = useMemo(() => new Set((datos?.alertas ?? []).map((a) => a.filamentoId)), [datos]);
   const alertasUmbral = useMemo(() => calcularAlertasAgregadas(filamentos, umbrales), [filamentos, umbrales]);
+  // Opciones únicas (ordenadas) para los filtros de tipo, color y marca.
+  const opcs = (sel: (f: Filamento) => string) => Array.from(new Set(filamentos.map(sel).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'));
+  const opcionesTipo = useMemo(() => opcs((f) => String(f.tipo)), [filamentos]);
+  const opcionesColor = useMemo(() => opcs((f) => f.color), [filamentos]);
+  const opcionesMarca = useMemo(() => opcs((f) => f.marca), [filamentos]);
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return filamentos;
-    return filamentos.filter((f) => [f.id, f.tipo, f.color, f.marca, f.notas].some((c) => (c ?? '').toLowerCase().includes(q)));
-  }, [filamentos, busqueda]);
+    return filamentos.filter((f) => {
+      if (filtroTipo && String(f.tipo) !== filtroTipo) return false;
+      if (filtroColor && f.color !== filtroColor) return false;
+      if (filtroMarca && f.marca !== filtroMarca) return false;
+      if (q && ![f.id, f.tipo, f.color, f.marca, f.notas].some((c) => (c ?? '').toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [filamentos, busqueda, filtroTipo, filtroColor, filtroMarca]);
 
   function refrescar() { recargar(); recargarMov(); recargarUmb(); }
 
@@ -125,7 +129,24 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 
       <div className="card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="w-72"><BarraBusqueda valor={busqueda} onCambio={setBusqueda} placeholder="Buscar filamento…" /></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-56"><BarraBusqueda valor={busqueda} onCambio={setBusqueda} placeholder="Buscar filamento…" /></div>
+            <select className="input w-auto" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} aria-label="Filtrar por tipo">
+              <option value="">Todos los tipos</option>
+              {opcionesTipo.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select className="input w-auto" value={filtroColor} onChange={(e) => setFiltroColor(e.target.value)} aria-label="Filtrar por color">
+              <option value="">Todos los colores</option>
+              {opcionesColor.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select className="input w-auto" value={filtroMarca} onChange={(e) => setFiltroMarca(e.target.value)} aria-label="Filtrar por marca">
+              <option value="">Todas las marcas</option>
+              {opcionesMarca.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {(filtroTipo || filtroColor || filtroMarca) && (
+              <button className="text-xs text-steam-700 hover:underline" onClick={() => { setFiltroTipo(''); setFiltroColor(''); setFiltroMarca(''); }}>Limpiar filtros</button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <BotonRecargar onClick={refrescar} cargando={cargando} />
             <button className="btn-secondary" onClick={() => setVerMovimientos(true)}>Movimientos</button>
@@ -138,18 +159,12 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
             <thead className="border-b border-slate-200">
               <tr>
                 <th className="th">ID</th><th className="th">Tipo</th><th className="th">Color</th><th className="th">Marca</th>
-                <th className="th">Rollos</th><th className="th">Comenzado</th><th className="th">Restante</th><th className="th">Estado</th><th className="th text-right">Acciones</th>
+                <th className="th">Rollos</th><th className="th">Comenzado</th><th className="th">Restante</th><th className="th text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtrados.map((f) => {
                 const bajo = idsBajo.has(f.id);
-                const rotas = bajo ? reglasRotas(f, umbrales) : [];
-                const tooltipBajo = rotas.length > 0
-                  ? 'Stock bajo por:\n' + rotas.map((u) =>
-                      `• Por ${etiquetaVariable(u.variable).toLowerCase()} "${u.valor}": ${Math.round(f.gramosRestantes)} g ≤ ${u.umbralGramos} g (${Math.max(0, Math.round(u.umbralGramos - f.gramosRestantes))} g por debajo)`,
-                    ).join('\n')
-                  : '';
                 return (
                   <tr key={f.id}>
                     <td className="td font-mono text-xs">{f.id}</td>
@@ -166,19 +181,11 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                         <span className="text-xs">{Math.round(f.gramosRestantes)} g</span>
                       </div>
                     </td>
-                    <td className="td">
-                      <span
-                        title={tooltipBajo || undefined}
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${bajo ? 'cursor-help bg-rose-100 text-rose-700 ring-rose-200 underline decoration-dotted underline-offset-2' : 'bg-emerald-100 text-emerald-700 ring-emerald-200'}`}
-                      >
-                        {bajo ? 'Stock bajo' : 'OK'}
-                      </span>
-                    </td>
                     <td className="td"><AccionesFila onEditar={() => setEditando(f)} onEliminar={() => setPorEliminar(f)} /></td>
                   </tr>
                 );
               })}
-              {filtrados.length === 0 && <tr><td colSpan={9} className="td py-8 text-center text-slate-500">Sin filamentos registrados.</td></tr>}
+              {filtrados.length === 0 && <tr><td colSpan={8} className="td py-8 text-center text-slate-500">{busqueda || filtroTipo || filtroColor || filtroMarca ? 'Sin filamentos que coincidan con los filtros.' : 'Sin filamentos registrados.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -229,7 +236,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                 <tr key={`${a.variable}-${a.valor}`}>
                   <td className="td">{etiquetaVariable(a.variable)}</td>
                   <td className="td font-medium">{a.valor}</td>
-                  <td className="td">{Math.round(a.total)} g <span className="text-xs text-slate-400">({a.rollos} rollo{a.rollos === 1 ? '' : 's'})</span></td>
+                  <td className="td">{Math.round(a.total)} g</td>
                   <td className="td">{a.umbralGramos} g</td>
                   <td className="td">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${a.estado === 'debajo' ? 'bg-rose-100 text-rose-700 ring-rose-200' : 'bg-amber-100 text-amber-700 ring-amber-200'}`}>
@@ -271,7 +278,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       {porEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar filamento" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminarFilamento(porEliminar)}
         >
@@ -282,7 +289,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       {umbralEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar umbral" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setUmbralEliminar(null)}
           onConfirmar={() => hacerEliminarUmbral(umbralEliminar)}
         >
@@ -323,11 +330,13 @@ function ModalFilamento({
     tipo: filamento?.tipo ?? '',
     color: filamento?.color ?? '',
     marca: filamento?.marca ?? '',
-    rollos: filamento?.rollos ?? 1,
+    // Los campos numéricos se guardan como TEXTO para que al borrarlos queden
+    // vacíos (y no se autocompleten con 0); se convierten a número al guardar.
+    rollos: filamento ? String(filamento.rollos) : '1',
     comenzado: filamento?.comenzado ?? false,
     // Para un filamento NUEVO este campo es "gramos de los rollos comenzados"
-    // (parte de 0); al EDITAR es el gramaje restante real existente.
-    gramosRestantes: filamento?.gramosRestantes ?? 0,
+    // (parte vacío); al EDITAR es el gramaje restante real existente.
+    gramosRestantes: filamento != null ? String(filamento.gramosRestantes) : '',
     notas: filamento?.notas ?? '',
   });
   const [guardando, setGuardando] = useState(false);
@@ -360,9 +369,10 @@ function ModalFilamento({
     setGuardando(true);
     setError('');
     try {
+      const base = { ...f, rollos: Number(f.rollos) || 0, gramosRestantes: Number(f.gramosRestantes) || 0 };
       const payload = esNuevo
-        ? { ...f, umbralAlerta: 0, fechaRegistro: new Date().toISOString().slice(0, 10), ...opts }
-        : { ...filamento!, ...f };
+        ? { ...base, umbralAlerta: 0, fechaRegistro: new Date().toISOString().slice(0, 10), ...opts }
+        : { ...filamento!, ...base };
       const res = await fetch('/api/inventario/filamentos', {
         method: esNuevo ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -444,7 +454,7 @@ function ModalFilamento({
           </div>
           <div>
             <label className="label">Número de rollos {esNuevo && <span className="text-xs text-slate-400">(nuevos · 1 kg c/u)</span>}</label>
-            <input type="number" min="0" className="input" value={f.rollos} onChange={(e) => setF({ ...f, rollos: parseInt(e.target.value) || 0 })} />
+            <input type="number" min="0" className="input" value={f.rollos} onChange={(e) => setF({ ...f, rollos: e.target.value })} />
           </div>
           <div className="col-span-2 flex items-center gap-2 rounded-lg bg-slate-50 p-3">
             <input id="comenzado" type="checkbox" className="accent-steam-600" checked={f.comenzado} onChange={(e) => setF({ ...f, comenzado: e.target.checked })} />
@@ -453,7 +463,7 @@ function ModalFilamento({
           {(f.comenzado || !esNuevo) && (
             <div>
               <label className="label">{esNuevo ? 'Total de gramos del/los rollo(s) comenzado(s)' : 'Gramos restantes (aprox.)'}</label>
-              <input type="number" min="0" className="input" value={f.gramosRestantes} onChange={(e) => setF({ ...f, gramosRestantes: parseFloat(e.target.value) || 0 })} />
+              <input type="number" min="0" className="input" value={f.gramosRestantes} onChange={(e) => setF({ ...f, gramosRestantes: e.target.value })} />
             </div>
           )}
           {esNuevo && (
@@ -484,7 +494,9 @@ function ModalUmbral({
   const esEdicion = !!umbral;
   const [variable, setVariable] = useState<VariableUmbral>(umbral?.variable ?? 'tipo');
   const [valor, setValor] = useState(umbral?.valor ?? '');
-  const [umbralGramos, setUmbralGramos] = useState(umbral?.umbralGramos ?? 200);
+  // Texto para que al borrar el campo quede vacío (no se autocompleta con 0).
+  const [umbralGramos, setUmbralGramos] = useState(umbral ? String(umbral.umbralGramos) : '200');
+  const umbralNum = Number(umbralGramos) || 0;
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [confirmacion, setConfirmacion] = useState<UmbralAlerta | null>(null);
@@ -501,7 +513,7 @@ function ModalUmbral({
     try {
       const res = await fetch('/api/inventario/umbrales', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: umbral!.id, variable, valor, umbralGramos }),
+        body: JSON.stringify({ id: umbral!.id, variable, valor, umbralGramos: umbralNum }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error guardando');
@@ -532,7 +544,7 @@ function ModalUmbral({
       const res = await fetch('/api/inventario/umbrales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variable, valor, umbralGramos, ...opts }),
+        body: JSON.stringify({ variable, valor, umbralGramos: umbralNum, ...opts }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error creando el umbral');
@@ -610,11 +622,11 @@ function ModalUmbral({
         <div>
           <label className="label">Umbral de riesgo (g) *</label>
           <input type="number" min="1" className="input" value={umbralGramos}
-            onChange={(e) => setUmbralGramos(parseFloat(e.target.value) || 0)} />
+            onChange={(e) => setUmbralGramos(e.target.value)} />
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button className="btn-primary" onClick={esEdicion ? () => setResumen(cambios()) : () => guardar()} disabled={guardando || !valor.trim() || !(umbralGramos > 0)}>
+          <button className="btn-primary" onClick={esEdicion ? () => setResumen(cambios()) : () => guardar()} disabled={guardando || !valor.trim() || !(umbralNum > 0)}>
             {guardando ? 'Guardando…' : esEdicion ? 'Revisar cambios' : 'Guardar'}
           </button>
         </div>
@@ -631,8 +643,10 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
   const { datos, cargando, error, recargar } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras');
   const [editando, setEditando] = useState<Impresora | 'nueva' | null>(null);
   const [porEliminar, setPorEliminar] = useState<Impresora | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   async function hacerEliminar(imp: Impresora) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/inventario/impresoras?id=${encodeURIComponent(imp.id)}`, { method: 'DELETE' });
       const body = await res.json();
@@ -641,6 +655,7 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       setPorEliminar(null);
       recargar();
     } catch (e) { onMensaje({ tipo: 'error', texto: (e as Error).message }); }
+    finally { setEliminando(false); }
   }
 
   return (
@@ -682,7 +697,7 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       {porEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar impresora" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
         >
@@ -701,7 +716,8 @@ function ModalImpresora({
     nombre: impresora?.nombre ?? '',
     modelo: impresora?.modelo ?? '',
     estado: impresora?.estado ?? 'Operativa',
-    horasAcumuladas: impresora?.horasAcumuladas ?? 0,
+    // Texto para que al borrar el campo quede vacío (no se autocompleta con 0).
+    horasAcumuladas: impresora ? String(impresora.horasAcumuladas) : '0',
     notas: impresora?.notas ?? '',
   });
   const [guardando, setGuardando] = useState(false);
@@ -723,7 +739,7 @@ function ModalImpresora({
       const res = await fetch('/api/inventario/impresoras', {
         method: esNueva ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(esNueva ? f : { ...impresora!, ...f }),
+        body: JSON.stringify({ ...(esNueva ? f : { ...impresora!, ...f }), horasAcumuladas: Number(f.horasAcumuladas) || 0 }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error guardando');
@@ -758,7 +774,7 @@ function ModalImpresora({
               <option>Operativa</option><option>Mantenimiento</option><option>Fuera de servicio</option>
             </select>
           </div>
-          <div><label className="label">Horas acumuladas</label><input type="number" min="0" className="input" value={f.horasAcumuladas} onChange={(e) => setF({ ...f, horasAcumuladas: parseFloat(e.target.value) || 0 })} /></div>
+          <div><label className="label">Horas acumuladas</label><input type="number" min="0" className="input" value={f.horasAcumuladas} onChange={(e) => setF({ ...f, horasAcumuladas: e.target.value })} /></div>
           <div className="col-span-2"><label className="label">Notas</label><input className="input" value={f.notas} onChange={(e) => setF({ ...f, notas: e.target.value })} /></div>
         </div>
         <div className="flex justify-end gap-2">
@@ -779,8 +795,10 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
   const { datos: dImp } = useDatos<{ impresoras: Impresora[] }>('/api/inventario/impresoras', 5 * 60_000);
   const [modal, setModal] = useState<Mantenimiento | 'nuevo' | null>(null);
   const [porEliminar, setPorEliminar] = useState<Mantenimiento | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   async function hacerEliminar(m: Mantenimiento) {
+    setEliminando(true);
     try {
       const res = await fetch(`/api/inventario/mantenimiento?fila=${m.fila}`, { method: 'DELETE' });
       const body = await res.json();
@@ -790,7 +808,7 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
       recargar();
     } catch (e) {
       onMensaje({ tipo: 'error', texto: (e as Error).message });
-    }
+    } finally { setEliminando(false); }
   }
 
   return (
@@ -838,7 +856,7 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
       {porEliminar && (
         <ModalConfirmar
           abierto titulo="Eliminar mantenimiento" icono="🗑️" tono="danger"
-          confirmarTexto="Eliminar" cancelarTexto="Cancelar"
+          confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
         >
@@ -866,6 +884,12 @@ function ModalMantenimiento({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [resumen, setResumen] = useState<{ campo: string; de: string; a: string }[] | null>(null);
+
+  // Si el modal se abre antes de que carguen las impresoras, selecciona la primera
+  // cuando llegan (evita un <select> que muestra una impresora pero deja el estado vacío).
+  useEffect(() => {
+    if (!f.impresoraId && impresoras[0]) setF((prev) => ({ ...prev, impresoraId: impresoras[0].id }));
+  }, [impresoras]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambios = () => diffCampos([
     { campo: 'Fecha', de: editar?.fecha, a: f.fecha },
