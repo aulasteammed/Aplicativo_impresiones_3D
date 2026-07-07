@@ -138,6 +138,64 @@ export function AccionesFila({ onEditar, onEliminar }: { onEditar?: () => void; 
   );
 }
 
+/** Lista de números de página a mostrar (con "…" cuando hay muchas). */
+function rangoPaginas(actual: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | '…')[] = [1];
+  const ini = Math.max(2, actual - 1);
+  const fin = Math.min(total - 1, actual + 1);
+  if (ini > 2) out.push('…');
+  for (let p = ini; p <= fin; p++) out.push(p);
+  if (fin < total - 1) out.push('…');
+  out.push(total);
+  return out;
+}
+
+/** Controles de paginación: tamaño de página (10/20/50/100), navegación
+ *  (« ‹ › »), números de página e indicador "Mostrando X-Y de N elementos". */
+export function Paginacion({
+  total, pagina, tamano, onPagina, onTamano, tamanos = [10, 20, 50, 100],
+}: {
+  total: number;
+  pagina: number;
+  tamano: number;
+  onPagina: (p: number) => void;
+  onTamano: (t: number) => void;
+  tamanos?: number[];
+}) {
+  const totalPaginas = Math.max(1, Math.ceil(total / tamano));
+  const p = Math.min(Math.max(1, pagina), totalPaginas);
+  const desde = total === 0 ? 0 : (p - 1) * tamano + 1;
+  const hasta = Math.min(total, p * tamano);
+  const btn = 'inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg border border-slate-200 px-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-500">
+        <span>Mostrando <b className="text-slate-700">{desde}-{hasta}</b> de <b className="text-slate-700">{total}</b> elemento{total === 1 ? '' : 's'}</span>
+        <label className="flex items-center gap-1.5">
+          <span className="hidden sm:inline">Mostrar</span>
+          <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={tamano} onChange={(e) => onTamano(Number(e.target.value))}>
+            {tamanos.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <span className="hidden sm:inline">por página</span>
+        </label>
+      </div>
+      {totalPaginas > 1 && (
+        <div className="flex items-center gap-1">
+          <button className={btn} onClick={() => onPagina(1)} disabled={p <= 1} title="Primera" aria-label="Primera página">«</button>
+          <button className={btn} onClick={() => onPagina(p - 1)} disabled={p <= 1} title="Anterior" aria-label="Página anterior">‹</button>
+          {rangoPaginas(p, totalPaginas).map((n, i) => (n === '…'
+            ? <span key={`e${i}`} className="px-1 text-slate-400">…</span>
+            : <button key={n} className={`${btn} ${n === p ? '!border-steam-600 !bg-steam-600 !text-white' : ''}`} onClick={() => onPagina(n)} aria-current={n === p ? 'page' : undefined}>{n}</button>
+          ))}
+          <button className={btn} onClick={() => onPagina(p + 1)} disabled={p >= totalPaginas} title="Siguiente" aria-label="Página siguiente">›</button>
+          <button className={btn} onClick={() => onPagina(totalPaginas)} disabled={p >= totalPaginas} title="Última" aria-label="Última página">»</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const COLORES_ESTADO: Record<string, string> = {
   'Nueva': 'bg-blue-100 text-blue-700 ring-blue-200',
   'En Revisión': 'bg-amber-100 text-amber-700 ring-amber-200',

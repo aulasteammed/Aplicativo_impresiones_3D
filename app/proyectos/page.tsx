@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
-import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
 import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaProyectos() {
@@ -46,6 +46,13 @@ export default function PaginaProyectos() {
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
   }, [proyectos, busqueda, filtroEstado]);
+
+  // Paginación
+  const [pagina, setPagina] = useState(1);
+  const [tamano, setTamano] = useState(20);
+  useEffect(() => { setPagina(1); }, [busqueda, filtroEstado, tamano]);
+  const paginaActual = Math.min(pagina, Math.max(1, Math.ceil(filtrados.length / tamano)));
+  const paginados = filtrados.slice((paginaActual - 1) * tamano, paginaActual * tamano);
 
   async function cambiarEstado(p: Proyecto, estado: EstadoProyecto) {
     const res = await fetch(`/api/proyectos/${encodeURIComponent(p.codigo)}`, {
@@ -106,7 +113,7 @@ export default function PaginaProyectos() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtrados.map((p) => {
+              {paginados.map((p) => {
                 const gramos = Math.round(p.items.reduce((a, i) => a + i.gramos, 0));
                 const horas = Math.round(p.items.reduce((a, i) => a + i.tiempoHoras, 0) * 10) / 10;
                 const materiales = Array.from(new Set(p.items.map((i) => i.material))).join(', ');
@@ -146,6 +153,7 @@ export default function PaginaProyectos() {
             </tbody>
           </table>
         </div>
+        <Paginacion total={filtrados.length} pagina={paginaActual} tamano={tamano} onPagina={setPagina} onTamano={setTamano} />
       </div>
 
       {/* Detalle */}

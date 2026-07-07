@@ -63,6 +63,26 @@ export function hoyISO(): string {
   return ahoraColombia().toISOString().slice(0, 10);
 }
 
+/** Normaliza una fecha en cualquiera de los formatos usados en el aplicativo a
+ *  'YYYY-MM-DD'. Acepta ISO (2026-04-01[THH:mm...]) y formato Colombia del
+ *  formulario (DD/MM/YYYY[ HH:mm:ss]). Devuelve '' si no logra interpretarla. */
+export function fechaISO(valor: string | null | undefined): string {
+  const s = String(valor ?? '').trim();
+  if (!s) return '';
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const col = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (col) return `${col[3]}-${col[2].padStart(2, '0')}-${col[1].padStart(2, '0')}`;
+  return '';
+}
+
+/** Extrae la fecha de creación (YYYY-MM-DD) codificada en un código de cama
+ *  'IMP-YYMMDD-NN'. Devuelve '' si el código no tiene ese formato. */
+export function fechaDeCodigoCama(codigo: string | null | undefined): string {
+  const m = String(codigo ?? '').match(/^IMP-(\d{2})(\d{2})(\d{2})-/);
+  return m ? `20${m[1]}-${m[2]}-${m[3]}` : '';
+}
+
 /** Normaliza texto para comparaciones tolerantes: sin acentos, en minúsculas,
  *  sin espacios extremos y con espacios internos colapsados. */
 export function normalizarTexto(s: string | null | undefined): string {

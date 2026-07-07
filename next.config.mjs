@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ['googleapis', 'tesseract.js', 'jimp'],
+    serverComponentsExternalPackages: ['googleapis', 'tesseract.js', 'jimp', 'exceljs'],
   },
 };
 

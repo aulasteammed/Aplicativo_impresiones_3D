@@ -34,6 +34,10 @@ function cliente(): sheets_v4.Sheets {
     auth = new google.auth.GoogleAuth({ scopes });
   }
   G.__sheets = google.sheets({ version: 'v4', auth });
+  // Fail-fast: que una lectura nunca cuelgue el servidor. Timeout por petición y NO
+  // reintentar los 429 (cuota) —reintentarlos no ayuda dentro del mismo minuto y
+  // colgaría toda la app—; los errores 5xx sí se reintentan un par de veces.
+  google.options({ timeout: 15_000, retryConfig: { retry: 2, statusCodesToRetry: [[500, 599]] } });
   return G.__sheets;
 }
 

@@ -2,9 +2,9 @@
 
 // Ventana 4 — Historial de impresiones ejecutadas (solo lectura del Sheets de historial)
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RegistroHistorial } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, KpiCard, Modal, useDatos } from '@/components/ui';
+import { Aviso, BarraBusqueda, BotonRecargar, Chip, KpiCard, Modal, Paginacion, useDatos } from '@/components/ui';
 import { num, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaHistorial() {
@@ -29,6 +29,13 @@ export default function PaginaHistorial() {
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
   }, [historicos, busqueda, filtroResultado, filtroMaterial]);
+
+  // Paginación
+  const [pagina, setPagina] = useState(1);
+  const [tamano, setTamano] = useState(20);
+  useEffect(() => { setPagina(1); }, [busqueda, filtroResultado, filtroMaterial, tamano]);
+  const paginaActual = Math.min(pagina, Math.max(1, Math.ceil(filtrados.length / tamano)));
+  const paginados = filtrados.slice((paginaActual - 1) * tamano, paginaActual * tamano);
 
   const finalizadas = historicos.filter((r) => r.resultado);
   const exitosas = finalizadas.filter((r) => r.resultado === 'Exitoso').length;
@@ -87,7 +94,7 @@ export default function PaginaHistorial() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtrados.map((r, i) => (
+                {paginados.map((r, i) => (
                   <tr key={`${r.fila}-${i}`} className="cursor-pointer transition hover:bg-steam-50" onClick={() => setDetalle(r)}>
                     <td className="td whitespace-nowrap font-mono text-xs">{r.codigo || '—'}</td>
                     <td className="td font-medium">{r.nombre}</td>
@@ -107,6 +114,7 @@ export default function PaginaHistorial() {
             </table>
           </div>
         )}
+        {(!cargando || datos) && <Paginacion total={filtrados.length} pagina={paginaActual} tamano={tamano} onPagina={setPagina} onTamano={setTamano} />}
       </div>
 
       <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Registro — ${detalle?.codigo || 'sin código'}`} ancho="max-w-3xl">

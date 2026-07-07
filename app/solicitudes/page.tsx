@@ -4,11 +4,20 @@
 // del Google Forms, con detalle, cambio de estado + notificación por correo,
 // y creación de solicitudes nuevas (enviadas al Form real).
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EstadoSolicitud, Solicitud } from '@/lib/types';
-import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, Paginacion, diffCampos, useDatos } from '@/components/ui';
 
 const ESTADOS: EstadoSolicitud[] = ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'];
+
+// Color de fondo representativo por estado (para el selector de estado de cada fila).
+const COLOR_ESTADO: Record<string, string> = {
+  'Nueva': 'bg-blue-100 text-blue-800 border-blue-300',
+  'En Revisión': 'bg-amber-100 text-amber-800 border-amber-300',
+  'Aprobada': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  'Rechazada': 'bg-rose-100 text-rose-800 border-rose-300',
+  'Atendida': 'bg-slate-200 text-slate-700 border-slate-300',
+};
 
 export default function PaginaSolicitudes() {
   const { datos, cargando, error, recargar } = useDatos<{ solicitudes: Solicitud[]; esDemo: boolean }>('/api/solicitudes');
@@ -28,14 +37,28 @@ export default function PaginaSolicitudes() {
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return solicitudes.filter((s) => {
+    const base = solicitudes.filter((s) => {
       if (filtroEstado && s.estado !== filtroEstado) return false;
       if (filtroMotivo && s.motivo !== filtroMotivo) return false;
       if (!q) return true;
       return [s.nombre, s.correo, s.celular, s.motivo, s.descripcionPieza, s.programa, s.servicio]
         .some((c) => (c ?? '').toLowerCase().includes(q));
     });
+    // Orden inicial por estado (Nueva → En Revisión → Aprobada → Rechazada → Atendida)
+    // SOLO cuando no hay búsqueda ni filtros; con cualquier criterio activo se
+    // mantiene el orden natural (más recientes primero) y no prevalece este orden.
+    if (!q && !filtroEstado && !filtroMotivo) {
+      return [...base].sort((a, b) => ESTADOS.indexOf(a.estado) - ESTADOS.indexOf(b.estado));
+    }
+    return base;
   }, [solicitudes, busqueda, filtroEstado, filtroMotivo]);
+
+  // Paginación
+  const [pagina, setPagina] = useState(1);
+  const [tamano, setTamano] = useState(20);
+  useEffect(() => { setPagina(1); }, [busqueda, filtroEstado, filtroMotivo, tamano]);
+  const paginaActual = Math.min(pagina, Math.max(1, Math.ceil(filtradas.length / tamano)));
+  const paginadas = filtradas.slice((paginaActual - 1) * tamano, paginaActual * tamano);
 
   async function aplicarEstado(s: Solicitud, estado: EstadoSolicitud) {
     const res = await fetch('/api/solicitudes/estado', {
@@ -119,7 +142,7 @@ export default function PaginaSolicitudes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtradas.map((s) => (
+                {paginadas.map((s) => (
                   <tr key={s.id} className="cursor-pointer transition hover:bg-steam-50" onClick={() => setDetalle(s)}>
                     <td className="td whitespace-nowrap text-xs text-slate-500">{s.marcaTemporal}</td>
                     <td className="td font-medium">{s.nombre}</td>
@@ -128,7 +151,7 @@ export default function PaginaSolicitudes() {
                     <td className="td whitespace-nowrap">{s.fechaTentativa}</td>
                     <td className="td" onClick={(e) => e.stopPropagation()}>
                       <select
-                        className="rounded-lg border border-slate-200 bg-transparent px-1 py-0.5 text-xs"
+                        className={`cursor-pointer rounded-lg border px-2 py-0.5 text-xs font-semibold ${COLOR_ESTADO[s.estado] ?? 'bg-slate-100 text-slate-700 border-slate-300'}`}
                         value={s.estado}
                         onChange={(e) => onCambioEstado(s, e.target.value as EstadoSolicitud)}
                       >
@@ -147,6 +170,7 @@ export default function PaginaSolicitudes() {
             </table>
           </div>
         )}
+        {(!cargando || datos) && <Paginacion total={filtradas.length} pagina={paginaActual} tamano={tamano} onPagina={setPagina} onTamano={setTamano} />}
       </div>
 
       {/* Detalle de la solicitud */}
