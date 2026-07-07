@@ -3,7 +3,7 @@
 // Ventana 1 — Dashboard interactivo: filtra por mes/rol/programa/motivo/servicio
 // y todo el tablero se recalcula. Datos en vivo de /api/dashboard/datos.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Aviso, BotonRecargar, useDatos } from '@/components/ui';
 import { canonCategoria, formatCOP, calcularAlertasMantenimiento, normalizarTexto } from '@/lib/util';
 import { DatosDashboard, Impresora, Mantenimiento } from '@/lib/types';
@@ -127,7 +127,7 @@ function FiltroMulti({ dim, label, opciones, sel, abierto, onAbrir, onSet }: {
     onSet(base.size === opciones.length ? null : base);
   };
   return (
-    <div className="md" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="md">
       <button className={`md-btn ${activo ? 'act' : ''}`} onClick={onAbrir}>
         {label}{activo ? <span className="cnt">{sel!.size}</span> : <span style={{ opacity: .5 }}>▾</span>}
       </button>
@@ -154,12 +154,16 @@ export default function Dashboard() {
   const { datos, cargando, error, recargar } = useDatos<DatosDashboard>('/api/dashboard/datos');
   const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
   const [abierto, setAbierto] = useState<string | null>(null);
+  const barraRef = useRef<HTMLDivElement>(null);
 
-  // Un clic fuera cierra el popover de filtros
+  // Cierra el popover SOLO si el clic fue fuera de la barra de filtros; así, marcar/
+  // desmarcar valores dentro de una lista no cierra el popover ni pierde el clic.
   useEffect(() => {
-    const cerrar = () => setAbierto(null);
-    document.addEventListener('mousedown', cerrar);
-    return () => document.removeEventListener('mousedown', cerrar);
+    const alClic = (e: MouseEvent) => {
+      if (barraRef.current && !barraRef.current.contains(e.target as Node)) setAbierto(null);
+    };
+    document.addEventListener('mousedown', alClic);
+    return () => document.removeEventListener('mousedown', alClic);
   }, []);
 
   const setDim = (dim: string) => (next: Set<string> | null) =>
@@ -256,7 +260,7 @@ export default function Dashboard() {
       )}
 
       {/* Filtros */}
-      <div className="filtros mt-4">
+      <div className="filtros mt-4" ref={barraRef}>
         <span className="flab">Filtros</span>
         {DIMS.map(([k, l]) => (
           <FiltroMulti

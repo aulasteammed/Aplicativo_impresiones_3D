@@ -10,10 +10,20 @@ import {
 import { normalizarEstado, extraerCorreo, num } from '../util';
 import { NuevaSolicitud } from './forms';
 
-let _sheets: sheets_v4.Sheets | null = null;
+// Estado COMPARTIDO vía globalThis: sobrevive al hot-reload del dev server y, sobre
+// todo, se comparte entre todas las rutas del servidor (Next empaqueta cada ruta por
+// separado; con variables de módulo normales cada ruta tendría su propia caché y su
+// propia inicialización, y la caché no serviría al cambiar de ventana). Igual patrón
+// que lib/demo.ts.
+const G = globalThis as unknown as {
+  __sheets?: sheets_v4.Sheets;
+  __sheetsCache?: Map<string, { t: number; datos: string[][] }>;
+  __invInit?: boolean;
+  __invInitPromise?: Promise<void>;
+};
 
 function cliente(): sheets_v4.Sheets {
-  if (_sheets) return _sheets;
+  if (G.__sheets) return G.__sheets;
   const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
   let auth;
   if (config.serviceAccountJson) {
@@ -23,8 +33,8 @@ function cliente(): sheets_v4.Sheets {
     // usa GOOGLE_APPLICATION_CREDENTIALS (ruta a archivo JSON)
     auth = new google.auth.GoogleAuth({ scopes });
   }
-  _sheets = google.sheets({ version: 'v4', auth });
-  return _sheets;
+  G.__sheets = google.sheets({ version: 'v4', auth });
+  return G.__sheets;
 }
 
 // Caché de lecturas con TTL corto. La API de Sheets limita a ~60 lecturas por
@@ -32,7 +42,8 @@ function cliente(): sheets_v4.Sheets {
 // automático se repiten muchas lecturas de los mismos rangos; la caché las colapsa
 // para no exceder la cuota. Cualquier escritura/alta/baja invalida toda la caché.
 const TTL_LECTURA_MS = 12_000;
-const cacheLecturas = new Map<string, { t: number; datos: string[][] }>();
+G.__sheetsCache ??= new Map();
+const cacheLecturas = G.__sheetsCache;
 
 function invalidarCacheLecturas(): void {
   cacheLecturas.clear();
@@ -77,6 +88,25 @@ async function anexarFilas(spreadsheetId: string, range: string, values: (string
 async function batchUpdateCliente(spreadsheetId: string, requests: sheets_v4.Schema$Request[]): Promise<void> {
   await cliente().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
   invalidarCacheLecturas();
+}
+
+/** Lee VARIOS rangos del mismo spreadsheet en UNA sola petición (cuenta como 1
+ *  lectura). Alimenta la caché por rango y devuelve un mapa rango → valores. */
+async function leerVariosRangos(spreadsheetId: string, ranges: string[]): Promise<Record<string, string[][]>> {
+  // Devuelve de caché los que estén vigentes; solo pide a la API los que falten.
+  const faltantes = ranges.filter((r) => {
+    const c = cacheLecturas.get(`${spreadsheetId}::${r}`);
+    return !(c && Date.now() - c.t < TTL_LECTURA_MS);
+  });
+  if (faltantes.length > 0) {
+    const res = await cliente().spreadsheets.values.batchGet({ spreadsheetId, ranges: faltantes, valueRenderOption: 'FORMATTED_VALUE' });
+    (res.data.valueRanges ?? []).forEach((vr, i) => {
+      cacheLecturas.set(`${spreadsheetId}::${faltantes[i]}`, { t: Date.now(), datos: (vr.values ?? []) as string[][] });
+    });
+  }
+  const out: Record<string, string[][]> = {};
+  for (const r of ranges) out[r] = cacheLecturas.get(`${spreadsheetId}::${r}`)?.datos ?? [];
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -439,10 +469,19 @@ const TABS_INVENTARIO: Record<string, string[]> = {
   Umbrales: ['ID', 'Variable', 'Valor', 'Umbral (g)'],
 };
 
-let inventarioInicializado = false;
 
+// Memoiza la PROMESA (single-flight): si varias lecturas de inventario corren en
+// paralelo (p. ej. el Promise.all del dashboard), TODAS esperan la misma
+// inicialización en vez de ejecutarla varias veces a la vez.
 export async function asegurarInventario(): Promise<void> {
-  if (inventarioInicializado) return;
+  if (G.__invInit) return;
+  if (!G.__invInitPromise) {
+    G.__invInitPromise = inicializarInventario().finally(() => { G.__invInitPromise = undefined; });
+  }
+  return G.__invInitPromise;
+}
+
+async function inicializarInventario(): Promise<void> {
   const meta = await cliente().spreadsheets.get({ spreadsheetId: config.sheetInventarioId });
   const existentes = new Set((meta.data.sheets ?? []).map((s) => s.properties?.title ?? ''));
   const requests: sheets_v4.Schema$Request[] = [];
@@ -452,9 +491,11 @@ export async function asegurarInventario(): Promise<void> {
   if (requests.length > 0) {
     await batchUpdateCliente(config.sheetInventarioId, requests);
   }
+  // Encabezados de las 5 pestañas en UNA sola petición (batchGet).
+  const tabs = Object.keys(TABS_INVENTARIO);
+  const cabeceras = await leerVariosRangos(config.sheetInventarioId, tabs.map((t) => `'${t}'!A1:Z1`));
   for (const [tab, headers] of Object.entries(TABS_INVENTARIO)) {
-    const fila1 = await leerRango(config.sheetInventarioId, `'${tab}'!A1:Z1`);
-    const actual = fila1[0] ?? [];
+    const actual = cabeceras[`'${tab}'!A1:Z1`]?.[0] ?? [];
     // Reescribe la fila de encabezados si falta o si el esquema cambió/creció
     // (p. ej. columnas nuevas de programación de mantenimiento). Solo toca la fila 1.
     if (headers.some((h, i) => (actual[i] ?? '') !== h)) {
@@ -468,7 +509,7 @@ export async function asegurarInventario(): Promise<void> {
       ['IMP-01', 'Sonny', 'Bambu Lab X1 Carbon', 'Operativa', 0, ''],
     ]);
   }
-  inventarioInicializado = true;
+  G.__invInit = true;
 }
 
 export async function getFilamentos(): Promise<Filamento[]> {
