@@ -182,7 +182,7 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
 | Col | Contenido | Se escribe |
 |---|---|---|
 | A | Marca temporal de la solicitud (vínculo) | al crear cama |
-| B | Código de la cama (`IMP-AAMMDD-NN`) | al crear |
+| B | Código de la cama (`IMP-DDMMAA-NN`) | al crear |
 | C–K | Nombre, correo, rol, programa, motivo, servicio, descripción, objetivo, fecha | al crear |
 | L | Impresora | al crear |
 | M | Tiempo de impresión (**horas decimales**, p. ej. `3.73`) | al crear |
@@ -218,7 +218,7 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
 - **Estados de solicitud**: `Nueva` (celda vacía en la hoja), `En Revisión`, `Aprobada`, `Rechazada`, `Atendida`. El histórico "Aceptada" se interpreta como `Aprobada`. Solo las solicitudes **Aprobada** son elegibles para una cama. **Finalizar una cama NO cambia el estado** de sus solicitudes; el paso a `Atendida` lo hace el usuario manualmente en Solicitudes.
 - **Correo de notificación**: al cambiar el estado, la app pregunta si notificar. El destinatario viene de la **columna C** (correo), es **editable** y admite **varios correos** separados por comas.
 - **Paginación**: las tablas de Solicitudes, Camas e Historial se paginan (10/20/50/100 por página) y vuelven a la página 1 al cambiar filtros o búsqueda.
-- **Camas de impresión**: el **código** (`IMP-AAMMDD-NN`) es el identificador; se genera automático pero es **editable y único** al crear. El **tiempo** se ingresa/edita en **horas y minutos** (internamente se guarda en horas decimales). Se puede **asignar un filamento** del inventario por solicitud.
+- **Camas de impresión**: el **código** (`IMP-DDMMAA-NN`) es el identificador; se genera automático pero es **editable y único** al crear. El **tiempo** se ingresa/edita en **horas y minutos** (internamente se guarda en horas decimales). Se puede **asignar un filamento** del inventario por solicitud.
 - **Inventario — filamentos con tolerancia**: al añadir un filamento, si (tipo, color, marca) coincide con uno existente —tolerando mayúsculas, acentos y pequeños typos (distancia Damerau-Levenshtein)— la app **fusiona** (suma rollos/gramos) o **pregunta** si la coincidencia es solo aproximada. El total de un filamento nuevo = `rollos × 1000 g` + (opcional) gramos de rollos comenzados.
 - **Materiales canónicos**: el material escrito (o detectado por OCR) se normaliza a su forma canónica con la misma tolerancia (`petg`, `pteg` → `PETG`), para evitar duplicados en estadísticas.
 - **Umbrales de alerta (stock)**: se definen por **color / marca / tipo** + gramos. La tabla **"Alertas de stock"** y el Dashboard suman el **total del inventario** que coincide con cada regla y avisan si está **por debajo** o **muy cerca** (dentro del 10%) del umbral. (El chip "Stock bajo" de cada fila de filamentos es por rollo).

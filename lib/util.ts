@@ -92,10 +92,10 @@ export function fechaISO(valor: string | null | undefined): string {
 }
 
 /** Extrae la fecha de creación (YYYY-MM-DD) codificada en un código de cama
- *  'IMP-YYMMDD-NN'. Devuelve '' si el código no tiene ese formato. */
+ *  'IMP-DDMMAA-NN'. Devuelve '' si el código no tiene ese formato. */
 export function fechaDeCodigoCama(codigo: string | null | undefined): string {
   const m = String(codigo ?? '').match(/^IMP-(\d{2})(\d{2})(\d{2})-/);
-  return m ? `20${m[1]}-${m[2]}-${m[3]}` : '';
+  return m ? `20${m[3]}-${m[2]}-${m[1]}` : '';
 }
 
 /** Normaliza texto para comparaciones tolerantes: sin acentos, en minúsculas,
@@ -201,19 +201,34 @@ export function calcularAlertasAgregadas(filamentos: Filamento[], umbrales: Umbr
   return out;
 }
 
-// Catálogos de las categorías CERRADAS del dashboard (opción fija en el Form).
+// Catálogos de las categorías CERRADAS del dashboard (vocabulario controlado).
 // Sirven para que ningún valor de otra categoría se cuele en un filtro o gráfico,
-// y para colapsar duplicados por mayúsculas/tildes.
+// para colapsar duplicados por mayúsculas/tildes, y para agrupar en "Otros"
+// cualquier valor que no esté en el catálogo (ver canonCategoria).
 export const CATALOGOS_DASHBOARD: Record<string, string[]> = {
-  rol: ['Estudiante', 'Profesor(a)', 'Egresado(a)', 'Contratista'],
+  rol: ['Estudiante', 'Profesor(a)', 'Egresado(a)', 'Contratista', 'Empleado(a)', 'Público externo'],
+  programa: [
+    'Arquitectura', 'Artes plásticas', 'Construcción', 'Matemáticas', 'Estadística',
+    'Ingeniería biológica', 'Ingeniería física', 'Ciencias de la computación', 'Ingeniería agrícola',
+    'Ingeniería agronómica', 'Ingeniería forestal', 'Zootecnia', 'Ciencias políticas', 'Historia',
+    'Economía', 'Ingeniería Civil', 'Ingeniería Administrativa', 'Ingeniería Ambiental',
+    'Ingeniería de petróleos', 'Ingeniería Mecánica', 'Ingeniería Eléctrica', 'Ingeniería de Control',
+    'Ingeniería Geológica', 'Ingeniería Química', 'Ingeniería Industrial', 'Ingeniería de Minas y Metalurgia',
+    'Ingeniería de Sistemas e Informática',
+  ],
   motivo: ['Asignaturas de proyectos en ingeniería', 'Investigación', 'Proyecto académico', 'Proyecto personal', 'Curso académico'],
   servicio: ['Impresión 3D', 'Modelado 3D', 'Modelado 3D e Impresión 3D'],
 };
 
-const esPlaceholderCat = (v: string) => /^\(.*\)$/.test(v.trim()); // "(sin dato)", "(sin programa)"
+// Reconoce los grupos "meta" que se conservan como bucket propio (no van a "Otros"
+// ni se descartan): los "(sin dato)" entre paréntesis y el "No aplica" del programa.
+const esPlaceholderCat = (v: string) => /^\(.*\)$/.test(v.trim()) || normalizarTexto(v) === 'no aplica';
 
 /** Valor canónico de `valor` para la categoría `dim`, o null si no corresponde a
- *  esa categoría (colapsa mayúsculas/tildes y descarta valores de otra categoría). */
+ *  esa categoría (colapsa mayúsculas/tildes y descarta valores de otra categoría).
+ *  En una categoría cerrada, un valor propio que no esté en el catálogo se agrupa
+ *  como "Otros" (no se descarta); solo se descartan los valores que pertenecen a
+ *  OTRA categoría (datos mal ubicados). */
 export function canonCategoria(dim: string, valor: string | null | undefined): string | null {
   if (valor == null || valor === '') return null;
   const v = String(valor);
@@ -226,7 +241,7 @@ export function canonCategoria(dim: string, valor: string | null | undefined): s
   for (const otra in CATALOGOS_DASHBOARD) {
     if (otra !== dim && CATALOGOS_DASHBOARD[otra].some((c) => normalizarTexto(c) === normalizarTexto(v))) return null;
   }
-  return propio ? null : v.trim(); // cerrada sin match → descarta; abierta (programa/mes) → conserva
+  return propio ? 'Otros' : v.trim(); // cerrada sin match → "Otros"; abierta (mes) → conserva
 }
 
 /** Formatea un monto en pesos colombianos (COP), sin decimales: "$ 85.000". */
@@ -282,12 +297,13 @@ export function calcularAlertasMantenimiento(
   return out;
 }
 
-/** Genera el código de proyecto IMP-AAMMDD-NN a partir de los códigos existentes.
- *  La fecha AAMMDD se toma en hora de Colombia (UTC-5), no en la del servidor, para
+/** Genera el código de proyecto IMP-DDMMAA-NN a partir de los códigos existentes.
+ *  La fecha DDMMAA se toma en hora de Colombia (UTC-5), no en la del servidor, para
  *  que el consecutivo del día no se reinicie ni se adelante cerca de la medianoche. */
 export function generarCodigoProyecto(codigosExistentes: string[]): string {
   const d = ahoraColombia();
-  const fecha = `${String(d.getUTCFullYear()).slice(2)}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+  // Fecha en formato DDMMAA (día, mes, año de 2 dígitos).
+  const fecha = `${String(d.getUTCDate()).padStart(2, '0')}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCFullYear()).slice(2)}`;
   const prefijo = `IMP-${fecha}-`;
   const delDia = codigosExistentes.filter((c) => c.startsWith(prefijo));
   let max = 0;

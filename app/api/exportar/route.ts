@@ -33,6 +33,20 @@ export async function POST(req: NextRequest) {
       return (!desde || d >= desde) && (!hasta || d <= hasta);
     };
 
+    // Convierte a número REAL los valores numéricos (así Excel no los marca como
+    // "número almacenado como texto"). Tolera la coma decimal y los separadores de
+    // miles del formato colombiano (p. ej. "267,18" → 267.18). Deja '' en los vacíos
+    // y conserva el texto no numérico. No se aplica al celular, que debe ser texto.
+    const numero = (v: unknown): number | string => {
+      if (v === '' || v == null) return '';
+      if (typeof v === 'number') return v;
+      const s = String(v).trim();
+      if (s === '') return '';
+      const norm = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s;
+      const n = parseFloat(norm);
+      return Number.isFinite(n) ? n : s;
+    };
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Aula STEAM · Impresión 3D';
 
@@ -57,28 +71,31 @@ export async function POST(req: NextRequest) {
       const camas = (await getProyectos()).filter((c) => esCamaEnCurso(c.estado) && enRango(fechaDeCodigoCama(c.codigo)));
       const filas: (string | number)[][] = [];
       camas.forEach((c) => c.items.forEach((it) => filas.push(
-        [c.codigo, c.impresora, c.estado, it.nombre, it.correo, it.descripcionPieza, it.tiempoHoras, it.gramos, it.material, it.filamentoId ?? ''],
+        [c.codigo, c.impresora, c.estado, it.nombre, it.correo, it.descripcionPieza, numero(it.tiempoHoras), numero(it.gramos), it.material, it.filamentoId ?? ''],
       )));
       hoja('Camas de impresión',
         ['Código', 'Impresora', 'Estado', 'Solicitante', 'Correo', 'Pieza', 'Tiempo (h)', 'Gramos', 'Material', 'Filamento ID'], filas);
     }
     if (sel.historial) {
-      const h = (await getHistorial()).filter((r) => !esCamaEnCurso(r.estado) && enRango(r.marcaTemporal));
+      // Filtra por la fecha de CREACIÓN de la cama (codificada en el código
+      // IMP-DDMMAA-NN), que refleja cuándo se imprimió, no la marca temporal de la
+      // solicitud original.
+      const h = (await getHistorial()).filter((r) => !esCamaEnCurso(r.estado) && enRango(fechaDeCodigoCama(r.codigo)));
       hoja('Historial',
         ['Código', 'Marca temporal', 'Solicitante', 'Correo', 'Impresora', 'Tiempo (h)', 'Gramos', 'Material', 'Estado', 'Resultado', 'Desperdicio', 'Filamento ID'],
-        h.map((x) => [x.codigo, x.marcaTemporal, x.nombre, x.correo, x.impresora, x.tiempoHoras, x.gramos, x.material, x.estado, x.resultado, x.desperdicio, x.filamentoId]));
+        h.map((x) => [x.codigo, x.marcaTemporal, x.nombre, x.correo, x.impresora, numero(x.tiempoHoras), numero(x.gramos), x.material, x.estado, x.resultado, numero(x.desperdicio), x.filamentoId]));
     }
     if (sel.filamentos) {
       const f = (await getFilamentos()).filter((x) => enRango(x.fechaRegistro));
       hoja('Filamentos',
         ['ID', 'Tipo', 'Color', 'Marca', 'Rollos', 'Comenzado', 'Gramos restantes', 'Fecha registro', 'Notas'],
-        f.map((x) => [x.id, String(x.tipo), x.color, x.marca, x.rollos, x.comenzado ? 'Sí' : 'No', x.gramosRestantes, x.fechaRegistro, x.notas]));
+        f.map((x) => [x.id, String(x.tipo), x.color, x.marca, numero(x.rollos), x.comenzado ? 'Sí' : 'No', numero(x.gramosRestantes), x.fechaRegistro, x.notas]));
     }
     if (sel.mantenimiento) {
       const m = (await getMantenimientos()).filter((x) => enRango(x.fecha));
       hoja('Mantenimiento',
         ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base'],
-        m.map((x) => [x.fecha, x.impresoraId, x.tipo, x.descripcion, x.costo ?? '', x.responsable, x.programacion ?? '', x.proximaFecha ?? '', x.cadaHoras ?? '', x.horasBase ?? '']));
+        m.map((x) => [x.fecha, x.impresoraId, x.tipo, x.descripcion, numero(x.costo), x.responsable, x.programacion ?? '', x.proximaFecha ?? '', numero(x.cadaHoras), numero(x.horasBase)]));
     }
 
     const periodo = desde || hasta ? `-${desde || 'inicio'}_a_${hasta || hoyISO()}` : `-${hoyISO()}`;

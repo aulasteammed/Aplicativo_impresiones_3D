@@ -3,6 +3,7 @@
 // Componentes UI compartidos: modal, chips de estado, KPI, búsqueda, hook de datos.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { normalizarTexto } from '@/lib/util';
 
 export function Modal({
   abierto, onCerrar, titulo, children, ancho = 'max-w-2xl', centrado = false,
@@ -247,6 +248,70 @@ export function BarraBusqueda({
         <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
       <input className="input pl-9" value={valor} onChange={(e) => onCambio(e.target.value)} placeholder={placeholder} />
+    </div>
+  );
+}
+
+/** Campo de texto con sugerencias (reemplaza a <datalist>, que el navegador
+ *  posiciona/estiliza a su antojo). Permite escribir libremente y elegir de una
+ *  lista que se despliega JUSTO debajo del campo, con la paleta del aplicativo. */
+export function Combobox({
+  valor, onCambio, opciones, placeholder, id, onBlur, className = '',
+}: {
+  valor: string;
+  onCambio: (v: string) => void;
+  opciones: string[];
+  placeholder?: string;
+  id?: string;
+  onBlur?: (v: string) => void;
+  className?: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Cierra el desplegable al hacer clic fuera del campo.
+  useEffect(() => {
+    const alClic = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false);
+    };
+    document.addEventListener('mousedown', alClic);
+    return () => document.removeEventListener('mousedown', alClic);
+  }, []);
+
+  const q = normalizarTexto(valor);
+  const filtradas = q ? opciones.filter((o) => normalizarTexto(o).includes(q)) : opciones;
+
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        id={id}
+        className={`input pr-8 ${className}`}
+        value={valor}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={(e) => { onCambio(e.target.value); setAbierto(true); }}
+        onFocus={() => setAbierto(true)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }}
+        onBlur={() => onBlur?.(valor)}
+      />
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">▾</span>
+      {abierto && filtradas.length > 0 && (
+        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {filtradas.map((o) => (
+            <li key={o}>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 transition hover:bg-steam-50 hover:text-steam-700"
+                // mousedown (no click) para seleccionar ANTES de que el input pierda
+                // el foco; preventDefault mantiene el foco y evita cerrar en falso.
+                onMouseDown={(e) => { e.preventDefault(); onCambio(o); setAbierto(false); }}
+              >
+                {o}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

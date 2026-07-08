@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
-import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
 import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaProyectos() {
@@ -270,10 +270,13 @@ function ModalProyecto({
   // están en la cama aparecen marcadas (desmarcar = quitar).
   const aprobadas = (dSol?.solicitudes ?? []).filter((s) => s.estado === 'Aprobada');
   const impresoras = dImp?.impresoras ?? [];
+  // No se puede asignar una cama a una impresora en mantenimiento. En edición se
+  // conserva la que ya tuviera la cama (marcada) para no perder la asignación.
+  const opcionesImpresora = impresoras.filter((i) => i.estado !== 'Mantenimiento' || i.nombre === impresora);
   const filamentos = dFil?.filamentos ?? [];
   const codigosExistentes = (dProy?.proyectos ?? []).map((p) => p.codigo);
 
-  // Al crear, sugiere un código automático (IMP-AAMMDD-NN) editable por el usuario.
+  // Al crear, sugiere un código automático (IMP-DDMMAA-NN) editable por el usuario.
   useEffect(() => {
     if (!esEdicion && !codigo && dProy) setCodigo(generarCodigoProyecto(codigosExistentes));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -459,7 +462,7 @@ function ModalProyecto({
               className={`input ${codigoDuplicado ? '!border-red-400 !ring-red-200' : ''}`}
               value={codigo}
               onChange={(e) => setCodigo(e.target.value)}
-              placeholder="IMP-AAMMDD-NN"
+              placeholder="IMP-DDMMAA-NN"
             />
             {codigoDuplicado ? (
               <p className="mt-1 text-xs text-red-600">Ya existe otra cama con este código. Cámbielo para continuar.</p>
@@ -471,7 +474,9 @@ function ModalProyecto({
             <label className="label">Impresora *</label>
             <select className="input" value={impresora} onChange={(e) => setImpresora(e.target.value)}>
               <option value="">Seleccione…</option>
-              {impresoras.map((i) => <option key={i.id} value={i.nombre}>{i.nombre} — {i.modelo}</option>)}
+              {opcionesImpresora.map((i) => (
+                <option key={i.id} value={i.nombre}>{i.nombre} — {i.modelo}{i.estado === 'Mantenimiento' ? ' (en mantenimiento)' : ''}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -593,12 +598,11 @@ function ModalProyecto({
                         </div>
                         <div>
                           <label className="label">Material</label>
-                          <input
-                            className="input"
-                            list="cama-materiales"
-                            value={it.material}
-                            onChange={(e) => actualizarItem(it._key, { material: e.target.value })}
-                            onBlur={(e) => actualizarItem(it._key, cambiosMaterial(it._key, e.target.value))}
+                          <Combobox
+                            valor={it.material}
+                            onCambio={(v) => actualizarItem(it._key, { material: v })}
+                            onBlur={(v) => actualizarItem(it._key, cambiosMaterial(it._key, v))}
+                            opciones={MATERIALES_CANONICOS}
                             placeholder="Escriba el material"
                           />
                         </div>
@@ -635,9 +639,6 @@ function ModalProyecto({
                   );
                 })}
               </div>
-              <datalist id="cama-materiales">
-                {MATERIALES_CANONICOS.map((m) => <option key={m} value={m} />)}
-              </datalist>
             </div>
           </>
         )}

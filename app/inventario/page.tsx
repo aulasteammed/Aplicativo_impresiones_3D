@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
-import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
 import { calcularAlertasAgregadas, formatCOP } from '@/lib/util';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
@@ -436,21 +436,15 @@ function ModalFilamento({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Tipo de material *</label>
-            <input className="input" list="fil-tipos" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}
-              placeholder="Escriba un tipo (o elija uno existente)" />
-            <datalist id="fil-tipos">{tiposSugeridos.map((t) => <option key={t} value={t} />)}</datalist>
+            <Combobox valor={f.tipo} onCambio={(v) => setF({ ...f, tipo: v })} opciones={tiposSugeridos} placeholder="Escriba un tipo (o elija uno existente)" />
           </div>
           <div>
             <label className="label">Color *</label>
-            <input className="input" list="fil-colores" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })}
-              placeholder="Escriba un color (o elija uno existente)" />
-            <datalist id="fil-colores">{coloresSugeridos.map((c) => <option key={c} value={c} />)}</datalist>
+            <Combobox valor={f.color} onCambio={(v) => setF({ ...f, color: v })} opciones={coloresSugeridos} placeholder="Escriba un color (o elija uno existente)" />
           </div>
           <div>
             <label className="label">Marca *</label>
-            <input className="input" list="fil-marcas" value={f.marca} onChange={(e) => setF({ ...f, marca: e.target.value })}
-              placeholder="Escriba una marca (o elija una existente)" />
-            <datalist id="fil-marcas">{marcasSugeridas.map((m) => <option key={m} value={m} />)}</datalist>
+            <Combobox valor={f.marca} onCambio={(v) => setF({ ...f, marca: v })} opciones={marcasSugeridas} placeholder="Escriba una marca (o elija una existente)" />
           </div>
           <div>
             <label className="label">Número de rollos {esNuevo && <span className="text-xs text-slate-400">(nuevos · 1 kg c/u)</span>}</label>
@@ -607,16 +601,7 @@ function ModalUmbral({
         </div>
         <div>
           <label className="label">Valor ({etiquetaVariable(variable).toLowerCase()}) *</label>
-          <input
-            className="input"
-            list="umbral-valores"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            placeholder="Escriba un valor (o elija uno existente)"
-          />
-          <datalist id="umbral-valores">
-            {opciones.map((o) => <option key={o} value={o} />)}
-          </datalist>
+          <Combobox valor={valor} onCambio={setValor} opciones={opciones} placeholder="Escriba un valor (o elija uno existente)" />
           <p className="mt-1 text-xs text-slate-500">Puede escribir un color/marca/tipo nuevo; las coincidencias ignoran mayúsculas y acentos.</p>
         </div>
         <div>
