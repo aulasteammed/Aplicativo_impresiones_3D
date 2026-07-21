@@ -9,7 +9,7 @@ import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
-import { generarCodigoProyecto, canonicalizarMaterial, MATERIALES_CANONICOS, esCamaEnCurso } from '@/lib/util';
+import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaProyectos() {
   const { datos, cargando, error, recargar } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos');
@@ -274,6 +274,12 @@ function ModalProyecto({
   // conserva la que ya tuviera la cama (marcada) para no perder la asignación.
   const opcionesImpresora = impresoras.filter((i) => i.estado !== 'Mantenimiento' || i.nombre === impresora);
   const filamentos = dFil?.filamentos ?? [];
+  // Materiales que se ofrecen al crear la cama = tipos de filamento que tienen
+  // stock en el inventario (así solo aparecen materiales imprimibles, incluidos
+  // los filamentos recién creados; no una lista fija).
+  const materialesInventario = Array.from(new Set(
+    filamentos.filter((f) => f.gramosRestantes > 0).map((f) => canonicalizarMaterial(String(f.tipo))).filter(Boolean),
+  )).sort((a, b) => a.localeCompare(b, 'es'));
   const codigosExistentes = (dProy?.proyectos ?? []).map((p) => p.codigo);
 
   // Al crear, sugiere un código automático (IMP-DDMMAA-NN) editable por el usuario.
@@ -302,7 +308,7 @@ function ModalProyecto({
       ? { ...orig, _key: s.id }
       : {
         _key: s.id, solicitudId: s.id, nombre: s.nombre, correo: s.correo,
-        descripcionPieza: s.descripcionPieza, tiempoHoras: 0, gramos: 0, material: 'PLA', filamentoId: undefined,
+        descripcionPieza: s.descripcionPieza, tiempoHoras: 0, gramos: 0, material: '', filamentoId: undefined,
       }]);
   }
 
@@ -602,8 +608,8 @@ function ModalProyecto({
                             valor={it.material}
                             onCambio={(v) => actualizarItem(it._key, { material: v })}
                             onBlur={(v) => actualizarItem(it._key, cambiosMaterial(it._key, v))}
-                            opciones={MATERIALES_CANONICOS}
-                            placeholder="Escriba el material"
+                            opciones={materialesInventario}
+                            placeholder="Elija un material del inventario"
                           />
                         </div>
                         <div>

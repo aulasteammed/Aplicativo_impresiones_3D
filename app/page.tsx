@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Aviso, BotonRecargar, Modal, useDatos } from '@/components/ui';
-import { canonCategoria, formatCOP, calcularAlertasMantenimiento, normalizarTexto } from '@/lib/util';
+import { canonCategoria, formatCOP, calcularAlertasMantenimiento, horasAlUltimoMantenimiento, normalizarTexto } from '@/lib/util';
 import { DatosDashboard, Impresora, Mantenimiento } from '@/lib/types';
 
 const PAL = ['#6366f1', '#a855f7', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e', '#14b8a6', '#eab308'];
@@ -152,6 +152,81 @@ function FiltroMulti({ dim, label, opciones, sel, abierto, onAbrir, onSet }: {
   );
 }
 
+// Filtro de "Mes" jerárquico: primero el AÑO (lista corta que no crece con los
+// meses) y, al abrir un año, sus MESES. Produce el mismo conjunto de valores
+// "YYYY-MM" que el filtro plano, así el resto del tablero no cambia.
+function FiltroMes({ opciones, sel, abierto, onAbrir, onSet }: {
+  opciones: string[]; sel: Set<string> | undefined; abierto: boolean;
+  onAbrir: () => void; onSet: (next: Set<string> | null) => void;
+}) {
+  const [expandido, setExpandido] = useState<string | null>(null);
+  const activo = !!sel && sel.size > 0;
+  const porAnio = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    [...opciones].sort().forEach((ym) => { const a = ym.slice(0, 4); (m[a] ??= []).push(ym); });
+    return m;
+  }, [opciones]);
+  const anios = Object.keys(porAnio).sort();
+  // Año abierto por defecto = el más reciente; '' = ninguno abierto.
+  const anioAbierto = expandido === '' ? null : (expandido || anios[anios.length - 1] || null);
+
+  const marcado = (ym: string) => (sel ? sel.has(ym) : true);
+  const emitir = (base: Set<string>) => onSet(base.size === opciones.length ? null : base);
+  const toggle = (ym: string) => {
+    const base = sel ? new Set(sel) : new Set(opciones);
+    base.has(ym) ? base.delete(ym) : base.add(ym);
+    emitir(base);
+  };
+  const toggleAnio = (a: string) => {
+    const base = sel ? new Set(sel) : new Set(opciones);
+    const todos = porAnio[a].every((ym) => base.has(ym));
+    porAnio[a].forEach((ym) => (todos ? base.delete(ym) : base.add(ym)));
+    emitir(base);
+  };
+  const nSel = (a: string) => porAnio[a].filter(marcado).length;
+
+  return (
+    <div className="md">
+      <button className={`md-btn ${activo ? 'act' : ''}`} onClick={onAbrir}>
+        Mes{activo ? <span className="cnt">{sel!.size}</span> : <span style={{ opacity: .5 }}>▾</span>}
+      </button>
+      {abierto && (
+        <div className="md-pop">
+          <div className="md-mini">
+            <button onClick={() => onSet(null)}>Todos</button>
+            <button onClick={() => onSet(new Set())}>Ninguno</button>
+          </div>
+          {anios.length === 0 && <div className="md-opt" style={{ color: '#9aa1b2' }}>Sin datos</div>}
+          {anios.map((a) => {
+            const sc = nSel(a), total = porAnio[a].length, exp = anioAbierto === a;
+            return (
+              <div key={a}>
+                <div className="md-opt" style={{ fontWeight: 700, color: '#3c435a' }}>
+                  <input type="checkbox"
+                    checked={total > 0 && sc === total}
+                    ref={(el) => { if (el) el.indeterminate = sc > 0 && sc < total; }}
+                    onChange={() => toggleAnio(a)} />
+                  <span style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandido(exp ? '' : a)}>
+                    {a}{sc > 0 && sc < total ? ` · ${sc}` : ''}
+                  </span>
+                  <span style={{ color: '#9aa1b2', cursor: 'pointer', width: 14, textAlign: 'center' }}
+                    onClick={() => setExpandido(exp ? '' : a)}>{exp ? '▾' : '▸'}</span>
+                </div>
+                {exp && porAnio[a].map((ym) => (
+                  <label className="md-opt" key={ym} style={{ paddingLeft: 24 }}>
+                    <input type="checkbox" checked={marcado(ym)} onChange={() => toggle(ym)} />
+                    <span>{MESES_LARGO[ym.slice(5, 7)] || ym}</span>
+                  </label>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Modal de exportación: el usuario elige qué conjuntos de datos incluir y se
 // descarga un .xlsx (una hoja por conjunto) generado por /api/exportar.
@@ -171,6 +246,9 @@ function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
   const [error, setError] = useState('');
   const alguno = Object.values(sel).some(Boolean);
   const rangoInvalido = !!desde && !!hasta && desde > hasta;
+  // El calendario nativo muestra la fecha según el idioma del navegador; mostramos
+  // además la fecha elegida en formato DD/MM/AAAA para que siempre quede claro.
+  const ddmmaaaa = (iso: string) => { const p = iso.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; };
   const toggle = (k: string) => setSel((p) => ({ ...p, [k]: !p[k] }));
   const todos = (v: boolean) => setSel({ solicitudes: v, camas: v, historial: v, filamentos: v, mantenimiento: v });
 
@@ -241,12 +319,14 @@ function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="text-xs text-slate-400">Desde</span>
-                  <input type="date" className="input mt-0.5" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+                  <span className="text-xs text-slate-400">Desde (DD/MM/AAAA)</span>
+                  <input type="date" lang="es-CO" className="input mt-0.5" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+                  {desde && <span className="mt-0.5 block text-[11px] font-medium text-slate-500">{ddmmaaaa(desde)}</span>}
                 </label>
                 <label className="block">
-                  <span className="text-xs text-slate-400">Hasta</span>
-                  <input type="date" className="input mt-0.5" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+                  <span className="text-xs text-slate-400">Hasta (DD/MM/AAAA)</span>
+                  <input type="date" lang="es-CO" className="input mt-0.5" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+                  {hasta && <span className="mt-0.5 block text-[11px] font-medium text-slate-500">{ddmmaaaa(hasta)}</span>}
                 </label>
               </div>
               {rangoInvalido ? (
@@ -270,14 +350,16 @@ function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
 
 // Sección 5 · Costos de mantenimiento — con su propia barra de filtros (Año,
 // Impresora, Tipo, Responsable) que recalcula KPIs y gráficos en el cliente.
-type RegMant = { ano: string; impresora: string; tipo: string; responsable: string; desc: string; fecha: string; costo: number };
-const DIMS_MANT: [string, string][] = [['ano', 'Año'], ['impresora', 'Impresora'], ['tipo', 'Tipo'], ['responsable', 'Responsable']];
-const TIPOS_MANT = ['Preventivo', 'Correctivo', 'Consumible', 'Repuesto'];
-const TIPO_COL_MANT: Record<string, string> = { 'Preventivo': '#6366f1', 'Correctivo': '#f43f5e', 'Consumible': '#a855f7', 'Repuesto': '#f59e0b' };
+type RegMant = { ano: string; impresora: string; naturaleza: string; categoria: string; responsable: string; desc: string; fecha: string; costo: number };
+const DIMS_MANT: [string, string][] = [['ano', 'Año'], ['impresora', 'Impresora'], ['naturaleza', 'Naturaleza'], ['categoria', 'Categoría'], ['responsable', 'Responsable']];
+const NAT_ORDEN = ['Preventivo', 'Correctivo'];
+const NAT_COL: Record<string, string> = { 'Preventivo': '#6366f1', 'Correctivo': '#f43f5e' };
+const CAT_ORDEN = ['Consumible', 'Repuesto', 'Servicio', 'Sin gasto'];
+const CAT_COL: Record<string, string> = { 'Consumible': '#a855f7', 'Repuesto': '#f59e0b', 'Servicio': '#14b8a6', 'Sin gasto': '#94a3b8' };
 const capMant = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const copCorto = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`);
 const kCop = (n: number) => `$${Math.round(n / 1000)}k`;
-const valDimMant = (r: RegMant, d: string) => (d === 'ano' ? r.ano : d === 'impresora' ? r.impresora : d === 'tipo' ? r.tipo : r.responsable);
+const valDimMant = (r: RegMant, d: string) => (d === 'ano' ? r.ano : d === 'impresora' ? r.impresora : d === 'naturaleza' ? r.naturaleza : d === 'categoria' ? r.categoria : r.responsable);
 
 function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimientos: Mantenimiento[]; impresoras: Impresora[] }) {
   const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
@@ -295,7 +377,8 @@ function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimie
   const registros: RegMant[] = useMemo(() => mantenimientos.map((m) => ({
     ano: String(m.fecha || '').slice(0, 4) || '(sin fecha)',
     impresora: nombreImp(m.impresoraId),
-    tipo: capMant(m.tipo || '(sin tipo)'),
+    naturaleza: capMant(m.naturaleza || '(sin naturaleza)'),
+    categoria: m.categoria ? capMant(m.categoria) : 'Sin gasto',
     responsable: m.responsable || '(sin responsable)',
     desc: m.descripcion || 'Mantenimiento',
     fecha: m.fecha || '',
@@ -327,9 +410,13 @@ function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimie
     return Array.from(m.entries()).map(([l, v]) => ({ l, v }));
   };
   const porImp = agrupa((r) => r.impresora);
-  const tiposPresentes = Array.from(new Set(rows.map((r) => r.tipo)));
-  const tiposOrden = [...TIPOS_MANT.filter((t) => tiposPresentes.includes(t)), ...tiposPresentes.filter((t) => !TIPOS_MANT.includes(t))];
-  const porTipo: Punto[] = tiposOrden.map((t) => ({ l: t, v: rows.filter((r) => r.tipo === t).reduce((a, r) => a + r.costo, 0) }));
+  const grupoOrdenado = (orden: string[], keyFn: (r: RegMant) => string): Punto[] => {
+    const presentes = Array.from(new Set(rows.map(keyFn)));
+    const ord = [...orden.filter((t) => presentes.includes(t)), ...presentes.filter((t) => !orden.includes(t))];
+    return ord.map((t) => ({ l: t, v: rows.filter((r) => keyFn(r) === t).reduce((a, r) => a + r.costo, 0) }));
+  };
+  const porCategoria = grupoOrdenado(CAT_ORDEN, (r) => r.categoria);
+  const porNaturaleza = grupoOrdenado(NAT_ORDEN, (r) => r.naturaleza);
   const porMesMap = new Map<string, number>();
   rows.forEach((r) => { const ym = String(r.fecha).slice(0, 7); if (ym.length === 7) porMesMap.set(ym, (porMesMap.get(ym) || 0) + r.costo); });
   const porMes = Array.from(porMesMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
@@ -341,7 +428,7 @@ function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimie
   return (
     <>
       <div className="sec"><div className="sec-h"><h2>5 · Costos de mantenimiento</h2><span className="tag" style={{ background: '#eef0fe', color: '#4f46e5' }}>COP</span></div>
-        <p className="sec-p">Cuánto cuesta mantener los equipos: gasto acumulado, por equipo, por tipo y su evolución en el tiempo.</p></div>
+        <p className="sec-p">Cuánto cuesta mantener los equipos: gasto acumulado, por equipo, por categoría de gasto, por naturaleza y su evolución en el tiempo.</p></div>
 
       <div className="filtros" ref={barraRef}>
         <span className="flab">Filtros</span>
@@ -353,10 +440,10 @@ function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimie
       </div>
 
       <div className="grid k4">
-        <Kpi l="Costo total (filtrado)" v={formatCOP(total)} s={n === registros.length ? 'todos los registros' : `${n} de ${registros.length} registros`} cls="acc" />
-        <Kpi l="N.º de mantenimientos" v={n} s="registros en el rango filtrado" />
-        <Kpi l="Promedio por registro" v={n ? formatCOP(Math.round(total / n)) : '$ 0'} s="costo medio de un mantenimiento" />
-        <Kpi l="Ticket más alto" v={maxRec ? formatCOP(maxRec.costo) : '$ 0'} s={maxRec ? `${maxRec.desc} · ${maxRec.impresora}` : 'sin registros'} />
+        <Kpi l="Costo total" v={formatCOP(total)} s="Valor acumulado de los mantenimientos registrados." cls="acc" />
+        <Kpi l="N.º de mantenimientos" v={n} s="Cantidad total de mantenimientos registrados." />
+        <Kpi l="Promedio por registro" v={n ? formatCOP(Math.round(total / n)) : '$ 0'} s="Costo promedio por mantenimiento registrado." />
+        <Kpi l="Ticket más alto" v={maxRec ? formatCOP(maxRec.costo) : '$ 0'} s="Mayor costo registrado en un mantenimiento." />
       </div>
 
       <div className="grid c2" style={{ marginTop: 14 }}>
@@ -366,18 +453,26 @@ function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimie
           <Barras data={porImp} color="linear-gradient(90deg,#6366f1,#a855f7)" fmt={formatCOP} wide />
         </div>
         <div className="dcard">
-          <div className="chart-h">Costo por tipo</div>
-          <div className="chart-cap">En qué se va el dinero: preventivo, correctivo, consumibles, repuestos.</div>
-          <Donut data={porTipo} colorMap={TIPO_COL_MANT} fmt={formatCOP} centro={copCorto(total)} />
+          <div className="chart-h">Costo por categoría de gasto</div>
+          <div className="chart-cap">En qué se va el dinero: consumibles, repuestos, servicio.</div>
+          <Donut data={porCategoria} colorMap={CAT_COL} fmt={formatCOP} centro={copCorto(total)} />
         </div>
       </div>
 
       <div className="grid c2" style={{ marginTop: 14 }}>
         <div className="dcard">
+          <div className="chart-h">Costo por naturaleza</div>
+          <div className="chart-cap">Cuánto se gasta en prevención vs. en corregir fallas.</div>
+          <Donut data={porNaturaleza} colorMap={NAT_COL} fmt={formatCOP} centro={copCorto(total)} />
+        </div>
+        <div className="dcard">
           <div className="chart-h">Costo por mes</div>
           <div className="chart-cap">Evolución del gasto de mantenimiento en los últimos meses.</div>
           <Columnas data={porMes} fmt={kCop} />
         </div>
+      </div>
+
+      <div className="grid" style={{ marginTop: 14 }}>
         <div className="dcard">
           <div className="chart-h">Mantenimientos más costosos</div>
           <div className="chart-cap">Los registros individuales de mayor valor.</div>
@@ -415,7 +510,10 @@ export default function Dashboard() {
     setFiltros((prev) => { const c = { ...prev }; if (next == null) delete c[dim]; else c[dim] = next; return c; });
 
   const pasa = (r: Fila) => {
-    for (const d in filtros) { const s = filtros[d]; if (s && s.size && !s.has(canonCategoria(d, r[d]) as string)) return false; }
+    // Un conjunto vacío (todo desmarcado / "Ninguno") NO muestra nada de esa
+    // categoría — lo que se ve marcado es lo que se muestra. Solo la ausencia de
+    // filtro (dimensión no presente) equivale a "todos".
+    for (const d in filtros) { const s = filtros[d]; if (s && !s.has(canonCategoria(d, r[d]) as string)) return false; }
     return true;
   };
 
@@ -466,7 +564,8 @@ export default function Dashboard() {
     const p = planDe(imp.id);
     let valor = '—', sub = 'sin mantenimiento programado', ratio = 0;
     if (p && p.programacion === 'horas' && p.cadaHoras) {
-      const desde = Math.max(0, Math.round((imp.horasAcumuladas - (p.horasBase || 0)) * 10) / 10);
+      // Se cuenta desde el último mantenimiento de cualquier tipo (no solo el programado).
+      const desde = Math.max(0, Math.round((imp.horasAcumuladas - horasAlUltimoMantenimiento(imp.id, datos.mantenimientos)) * 10) / 10);
       ratio = desde / p.cadaHoras; valor = `${desde} / ${p.cadaHoras} h`; sub = `cada ${p.cadaHoras} h de uso`;
     } else if (p && p.programacion === 'fecha' && p.proximaFecha) {
       valor = p.proximaFecha; sub = al ? (al.estado === 'vencido' ? 'vencido' : 'próximo') : 'programado';
@@ -483,7 +582,7 @@ export default function Dashboard() {
   const rollosBajos = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral).length;
   const stock = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral * 1.2)
     .map((f) => ({ ...f, ratio: f.gramos / f.umbral })).sort((a, b) => a.ratio - b.ratio).slice(0, 8);
-  const TIPO_PILL: Record<string, string> = { 'preventivo': 'p-ok', 'correctivo': 'p-warn', 'consumible': 'p-mut', 'repuesto': 'p-mut' };
+  const NAT_PILL: Record<string, string> = { 'preventivo': 'p-ok', 'correctivo': 'p-warn' };
 
   const hayFiltros = Object.keys(filtros).length > 0;
 
@@ -513,12 +612,21 @@ export default function Dashboard() {
       <div className="filtros mt-4" ref={barraRef}>
         <span className="flab">Filtros</span>
         {DIMS.map(([k, l]) => (
-          <FiltroMulti
-            key={k} dim={k} label={l} opciones={opciones[k] ?? []}
-            sel={filtros[k]} abierto={abierto === k}
-            onAbrir={() => setAbierto(abierto === k ? null : k)}
-            onSet={setDim(k)}
-          />
+          k === 'mes' ? (
+            <FiltroMes
+              key={k} opciones={opciones[k] ?? []}
+              sel={filtros[k]} abierto={abierto === k}
+              onAbrir={() => setAbierto(abierto === k ? null : k)}
+              onSet={setDim(k)}
+            />
+          ) : (
+            <FiltroMulti
+              key={k} dim={k} label={l} opciones={opciones[k] ?? []}
+              sel={filtros[k]} abierto={abierto === k}
+              onAbrir={() => setAbierto(abierto === k ? null : k)}
+              onSet={setDim(k)}
+            />
+          )
         ))}
         {hayFiltros && <button className="clr" onClick={() => setFiltros({})}>✕ Limpiar filtros</button>}
       </div>
@@ -660,8 +768,8 @@ export default function Dashboard() {
           <div className="chart-cap">Historial reciente de intervenciones en los equipos.</div>
           {datos.mantenimientos.length ? datos.mantenimientos.slice(0, 6).map((m, i) => (
             <div className="lrow" key={i}>
-              <span className={`pill ${TIPO_PILL[m.tipo] || 'p-mut'}`}>{m.tipo}</span>
-              <div className="ln"><b>{nombreImp(m.impresoraId)}</b> — {m.descripcion}<div className="lsub">{m.responsable || '—'} · {m.costo ? formatCOP(m.costo) : '—'}</div></div>
+              <span className={`pill ${NAT_PILL[m.naturaleza] || 'p-mut'}`}>{m.naturaleza || '—'}</span>
+              <div className="ln"><b>{nombreImp(m.impresoraId)}</b> — {m.descripcion}<div className="lsub">{m.categoria ? `${capMant(m.categoria)} · ` : ''}{m.responsable || '—'} · {m.costo ? formatCOP(m.costo) : '—'}</div></div>
               <span className="lval">{m.fecha}</span>
             </div>
           )) : <p className="empty">Sin mantenimientos registrados.</p>}

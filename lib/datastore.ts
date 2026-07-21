@@ -334,22 +334,23 @@ export async function getMantenimientos(): Promise<Mantenimiento[]> {
 export async function crearMantenimiento(m: Mantenimiento): Promise<void> {
   const b = backend();
   const mant: Mantenimiento = { ...m };
+  // Captura SIEMPRE las horas actuales de la impresora al registrar. Sirve como
+  // punto de partida del intervalo 'horas' y, sobre todo, marca "cuándo se hizo el
+  // último mantenimiento": así CUALQUIER mantenimiento reinicia el contador de horas
+  // hasta el próximo (ver horasAlUltimoMantenimiento).
+  if (mant.horasBase == null) {
+    const imp = (await b.getImpresoras()).find((i) => i.id === mant.impresoraId);
+    mant.horasBase = imp ? imp.horasAcumuladas : 0;
+  }
   // Normaliza según el tipo de programación del próximo mantenimiento.
   if (mant.programacion === 'horas') {
     mant.proximaFecha = '';
-    // Captura las horas actuales de la impresora como punto de partida del intervalo.
-    if (mant.horasBase == null) {
-      const imp = (await b.getImpresoras()).find((i) => i.id === mant.impresoraId);
-      mant.horasBase = imp ? imp.horasAcumuladas : 0;
-    }
   } else if (mant.programacion === 'fecha') {
     mant.cadaHoras = undefined;
-    mant.horasBase = undefined;
   } else {
     mant.programacion = 'ninguna';
     mant.proximaFecha = '';
     mant.cadaHoras = undefined;
-    mant.horasBase = undefined;
   }
   await b.registrarMantenimiento(mant);
 }

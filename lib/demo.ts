@@ -87,7 +87,9 @@ function seed(): DemoStore {
   ];
 
   const mantenimientos: Mantenimiento[] = [
-    { fecha: '2026-05-02', impresoraId: 'IMP-01', tipo: 'preventivo', descripcion: 'Limpieza de extrusor y lubricación de rieles', responsable: 'Monitor Aula STEAM', costo: 0, programacion: 'horas', cadaHoras: 100, horasBase: 20 },
+    { fecha: '2026-05-02', impresoraId: 'IMP-01', naturaleza: 'preventivo', categoria: '', descripcion: 'Limpieza de extrusor y lubricación de rieles', responsable: 'Monitor Aula STEAM', costo: 0, programacion: 'horas', cadaHoras: 100, horasBase: 20 },
+    { fecha: '2026-05-20', impresoraId: 'IMP-01', naturaleza: 'correctivo', categoria: 'repuesto', descripcion: 'Cambio de boquilla obstruida', responsable: 'Monitor Aula STEAM', costo: 45000, programacion: 'ninguna', horasBase: 60 },
+    { fecha: '2026-06-10', impresoraId: 'IMP-01', naturaleza: 'preventivo', categoria: 'consumible', descripcion: 'Compra de grasa lubricante', responsable: 'Monitor Aula STEAM', costo: 18000, programacion: 'ninguna', horasBase: 80 },
   ];
 
   const umbrales: UmbralAlerta[] = [
@@ -360,7 +362,7 @@ export async function actualizarMantenimiento(m: Mantenimiento): Promise<void> {
   const original = st.mantenimientos[i];
   // Se PRESERVA la "Horas base" original: no se edita ni se agrega.
   st.mantenimientos[i] = {
-    fecha: m.fecha, impresoraId: m.impresoraId, tipo: m.tipo, descripcion: m.descripcion,
+    fecha: m.fecha, impresoraId: m.impresoraId, naturaleza: m.naturaleza, categoria: m.categoria, descripcion: m.descripcion,
     costo: m.costo, responsable: m.responsable, programacion: m.programacion,
     proximaFecha: m.proximaFecha, cadaHoras: m.cadaHoras, horasBase: original.horasBase,
   };

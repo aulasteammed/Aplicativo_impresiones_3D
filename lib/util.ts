@@ -260,10 +260,19 @@ function diasEntre(aISO: string, bISO: string): number {
 /** Días de antelación con que se avisa un mantenimiento programado por fecha. */
 export const DIAS_AVISO_MANTENIMIENTO = 7;
 
+/** Horas acumuladas de la impresora en su ÚLTIMO mantenimiento (de cualquier tipo).
+ *  Como las horas solo aumentan, es el mayor `horasBase` registrado. Es el punto
+ *  desde el que se cuenta el tiempo hasta el próximo mantenimiento, de modo que
+ *  registrar CUALQUIER mantenimiento reinicia ese contador. */
+export function horasAlUltimoMantenimiento(impresoraId: string, mantenimientos: Mantenimiento[]): number {
+  const bases = mantenimientos.filter((m) => m.impresoraId === impresoraId).map((m) => Number(m.horasBase) || 0);
+  return bases.length ? Math.max(0, ...bases) : 0;
+}
+
 /** Alertas de mantenimiento por impresora, derivadas de la PROGRAMACIÓN del último
  *  mantenimiento de cada equipo (una fecha específica o cada N horas acumuladas).
- *  - 'horas': avisa cuando las horas desde el último mantenimiento alcanzan el
- *    intervalo (vencido) o están dentro del 10% (próximo).
+ *  - 'horas': avisa cuando las horas desde el último mantenimiento (de cualquier tipo)
+ *    alcanzan el intervalo (vencido) o están dentro del 10% (próximo).
  *  - 'fecha': avisa cuando la fecha programada ya pasó (vencido) o falta poco (próximo). */
 export function calcularAlertasMantenimiento(
   impresoras: Impresora[], mantenimientos: Mantenimiento[], hoyStr: string,
@@ -277,7 +286,10 @@ export function calcularAlertasMantenimiento(
     if (!ult) continue;
 
     if (ult.programacion === 'horas' && ult.cadaHoras && ult.cadaHoras > 0) {
-      const desde = Math.max(0, Math.round((imp.horasAcumuladas - (ult.horasBase ?? 0)) * 10) / 10);
+      // El contador se mide desde el último mantenimiento de CUALQUIER tipo, así que
+      // hacer un mantenimiento (aunque no reprograme) reinicia las horas.
+      const base = horasAlUltimoMantenimiento(imp.id, mantenimientos);
+      const desde = Math.max(0, Math.round((imp.horasAcumuladas - base) * 10) / 10);
       if (desde >= ult.cadaHoras) {
         out.push({ impresoraId: imp.id, nombre: imp.nombre, motivo: 'horas', estado: 'vencido', horasAcumuladas: imp.horasAcumuladas, horasDesde: desde, cadaHoras: ult.cadaHoras });
       } else if (desde >= ult.cadaHoras * (1 - MARGEN_PROXIMIDAD_UMBRAL)) {

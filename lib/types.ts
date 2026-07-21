@@ -125,10 +125,18 @@ export interface Impresora {
 /** Cómo se programa el PRÓXIMO mantenimiento a partir de este registro */
 export type ProgramacionMantenimiento = 'ninguna' | 'fecha' | 'horas';
 
+/** Naturaleza de la intervención: por qué se hizo (independiente del gasto) */
+export type NaturalezaMantenimiento = 'preventivo' | 'correctivo';
+/** Categoría del gasto: en qué se gastó (independiente de la naturaleza) */
+export type CategoriaGasto = 'consumible' | 'repuesto' | 'servicio' | '';
+
 export interface Mantenimiento {
   fecha: string;
   impresoraId: string;
-  tipo: 'preventivo' | 'correctivo' | 'consumible' | 'repuesto' | string;
+  /** Naturaleza: preventivo o correctivo (por qué se hizo). */
+  naturaleza: NaturalezaMantenimiento | string;
+  /** Categoría del gasto: consumible, repuesto, servicio o '' si no hubo compra. */
+  categoria: CategoriaGasto | string;
   descripcion: string;
   /** Costo en pesos colombianos (COP). Siempre se maneja en COP. */
   costo?: number;

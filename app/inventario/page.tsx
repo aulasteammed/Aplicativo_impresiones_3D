@@ -809,14 +809,14 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="border-b border-slate-200">
-            <tr><th className="th">Fecha</th><th className="th">Impresora</th><th className="th">Tipo</th><th className="th">Descripción</th><th className="th">Costo (COP)</th><th className="th">Responsable</th><th className="th">Próximo mant.</th><th className="th text-right">Acciones</th></tr>
+            <tr><th className="th">Fecha</th><th className="th">Impresora</th><th className="th">Naturaleza · Gasto</th><th className="th">Descripción</th><th className="th">Costo (COP)</th><th className="th">Responsable</th><th className="th">Próximo mant.</th><th className="th text-right">Acciones</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {(datos?.mantenimientos ?? []).map((m, i) => (
               <tr key={i}>
                 <td className="td whitespace-nowrap text-xs">{m.fecha}</td>
                 <td className="td font-mono text-xs">{m.impresoraId}</td>
-                <td className="td capitalize">{m.tipo}</td>
+                <td className="td capitalize">{m.naturaleza || '—'}{m.categoria ? ` · ${m.categoria}` : ''}</td>
                 <td className="td">{m.descripcion}</td>
                 <td className="td whitespace-nowrap">{m.costo ? formatCOP(m.costo) : '—'}</td>
                 <td className="td">{m.responsable || '—'}</td>
@@ -845,7 +845,7 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
         >
-          ¿Eliminar el registro de mantenimiento de <b>{porEliminar.fecha}</b> ({porEliminar.tipo} — {porEliminar.descripcion})? Esta acción no se puede deshacer.
+          ¿Eliminar el registro de mantenimiento de <b>{porEliminar.fecha}</b> ({porEliminar.naturaleza}{porEliminar.categoria ? ` · ${porEliminar.categoria}` : ''} — {porEliminar.descripcion})? Esta acción no se puede deshacer.
         </ModalConfirmar>
       )}
     </div>
@@ -858,7 +858,8 @@ function ModalMantenimiento({
   const [f, setF] = useState({
     fecha: editar?.fecha || new Date().toISOString().slice(0, 10),
     impresoraId: editar?.impresoraId || impresoras[0]?.id || '',
-    tipo: editar?.tipo || 'preventivo',
+    naturaleza: editar?.naturaleza || 'preventivo',
+    categoria: editar?.categoria || '',
     descripcion: editar?.descripcion || '',
     costo: editar?.costo != null ? String(editar.costo) : '',
     responsable: editar?.responsable || '',
@@ -879,7 +880,8 @@ function ModalMantenimiento({
   const cambios = () => diffCampos([
     { campo: 'Fecha', de: editar?.fecha, a: f.fecha },
     { campo: 'Impresora', de: editar?.impresoraId, a: f.impresoraId },
-    { campo: 'Tipo', de: editar?.tipo, a: f.tipo },
+    { campo: 'Naturaleza', de: editar?.naturaleza, a: f.naturaleza },
+    { campo: 'Categoría de gasto', de: editar?.categoria, a: f.categoria, fmt: (v) => (v ? String(v) : '—') },
     { campo: 'Descripción', de: editar?.descripcion, a: f.descripcion },
     { campo: 'Costo (COP)', de: editar?.costo ?? 0, a: f.costo ? parseFloat(f.costo) : 0, fmt: (v) => (Number(v) ? formatCOP(Number(v)) : '—') },
     { campo: 'Responsable', de: editar?.responsable, a: f.responsable },
@@ -936,15 +938,24 @@ function ModalMantenimiento({
             </select>
           </div>
           <div>
-            <label className="label">Tipo</label>
-            <select className="input" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+            <label className="label">Naturaleza *</label>
+            <select className="input" value={f.naturaleza} onChange={(e) => setF({ ...f, naturaleza: e.target.value })}>
               <option value="preventivo">Preventivo</option>
               <option value="correctivo">Correctivo</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">¿Por qué se hace?</p>
+          </div>
+          <div>
+            <label className="label">Categoría de gasto</label>
+            <select className="input" value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })}>
+              <option value="">Sin gasto / no aplica</option>
               <option value="consumible">Consumible</option>
               <option value="repuesto">Repuesto</option>
+              <option value="servicio">Servicio / mano de obra</option>
             </select>
+            <p className="text-xs text-slate-500 mt-1">¿En qué se gastó?</p>
           </div>
-          <div><label className="label">Costo (COP, opcional)</label><input type="number" min="0" className="input" value={f.costo} onChange={(e) => setF({ ...f, costo: e.target.value })} /></div>
+          <div className="col-span-2"><label className="label">Costo (COP, opcional)</label><input type="number" min="0" className="input" value={f.costo} onChange={(e) => setF({ ...f, costo: e.target.value })} /></div>
           <div className="col-span-2"><label className="label">Descripción *</label><textarea className="input min-h-[70px]" value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} /></div>
           <div className="col-span-2"><label className="label">Responsable</label><input className="input" value={f.responsable} onChange={(e) => setF({ ...f, responsable: e.target.value })} /></div>
           <div className="col-span-2 border-t border-slate-100 pt-3">

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     // Convierte a número REAL los valores numéricos (así Excel no los marca como
     // "número almacenado como texto"). Tolera la coma decimal y los separadores de
     // miles del formato colombiano (p. ej. "267,18" → 267.18). Deja '' en los vacíos
-    // y conserva el texto no numérico. No se aplica al celular, que debe ser texto.
+    // y conserva el texto no numérico.
     const numero = (v: unknown): number | string => {
       if (v === '' || v == null) return '';
       if (typeof v === 'number') return v;
@@ -45,6 +45,16 @@ export async function POST(req: NextRequest) {
       const norm = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s;
       const n = parseFloat(norm);
       return Number.isFinite(n) ? n : s;
+    };
+
+    // Teléfonos: se convierten a número SOLO si son puros dígitos (así no queda la
+    // advertencia de Excel). Si traen "+", espacios o guiones se dejan como texto
+    // (un teléfono con formato no es una cantidad y no debe reinterpretarse).
+    const numeroTel = (v: unknown): number | string => {
+      const s = String(v ?? '').trim();
+      if (!s) return '';
+      const n = Number(s);
+      return /^\d+$/.test(s) && Number.isSafeInteger(n) ? n : s;
     };
 
     const wb = new ExcelJS.Workbook();
@@ -65,16 +75,16 @@ export async function POST(req: NextRequest) {
       const s = (await getSolicitudes()).filter((x) => enRango(x.marcaTemporal));
       hoja('Solicitudes',
         ['Marca temporal', 'Nombre', 'Correo', 'Celular', 'Rol', 'Programa', 'Motivo', 'Servicio', 'Descripción', 'Objetivo', 'Fecha tentativa', 'Estado'],
-        s.map((x) => [x.marcaTemporal, x.nombre, x.correo, x.celular, x.rol, x.programa, x.motivo, x.servicio, x.descripcionPieza, x.objetivoPieza, x.fechaTentativa, x.estado]));
+        s.map((x) => [x.marcaTemporal, x.nombre, x.correo, numeroTel(x.celular), x.rol, x.programa, x.motivo, x.servicio, x.descripcionPieza, x.objetivoPieza, x.fechaTentativa, x.estado]));
     }
     if (sel.camas) {
       const camas = (await getProyectos()).filter((c) => esCamaEnCurso(c.estado) && enRango(fechaDeCodigoCama(c.codigo)));
       const filas: (string | number)[][] = [];
       camas.forEach((c) => c.items.forEach((it) => filas.push(
-        [c.codigo, c.impresora, c.estado, it.nombre, it.correo, it.descripcionPieza, numero(it.tiempoHoras), numero(it.gramos), it.material, it.filamentoId ?? ''],
+        [c.codigo, c.impresora, c.estado, it.nombre, it.correo, it.solicitudId, it.descripcionPieza, numero(it.tiempoHoras), numero(it.gramos), it.material, it.filamentoId ?? ''],
       )));
       hoja('Camas de impresión',
-        ['Código', 'Impresora', 'Estado', 'Solicitante', 'Correo', 'Pieza', 'Tiempo (h)', 'Gramos', 'Material', 'Filamento ID'], filas);
+        ['Código', 'Impresora', 'Estado', 'Solicitante', 'Correo', 'Marca temporal de la solicitud', 'Pieza', 'Tiempo (h)', 'Gramos', 'Material', 'Filamento ID'], filas);
     }
     if (sel.historial) {
       // Filtra por la fecha de CREACIÓN de la cama (codificada en el código
@@ -82,7 +92,7 @@ export async function POST(req: NextRequest) {
       // solicitud original.
       const h = (await getHistorial()).filter((r) => !esCamaEnCurso(r.estado) && enRango(fechaDeCodigoCama(r.codigo)));
       hoja('Historial',
-        ['Código', 'Marca temporal', 'Solicitante', 'Correo', 'Impresora', 'Tiempo (h)', 'Gramos', 'Material', 'Estado', 'Resultado', 'Desperdicio', 'Filamento ID'],
+        ['Código', 'Marca temporal de la solicitud', 'Solicitante', 'Correo', 'Impresora', 'Tiempo (h)', 'Gramos', 'Material', 'Estado', 'Resultado', 'Desperdicio', 'Filamento ID'],
         h.map((x) => [x.codigo, x.marcaTemporal, x.nombre, x.correo, x.impresora, numero(x.tiempoHoras), numero(x.gramos), x.material, x.estado, x.resultado, numero(x.desperdicio), x.filamentoId]));
     }
     if (sel.filamentos) {
@@ -94,8 +104,8 @@ export async function POST(req: NextRequest) {
     if (sel.mantenimiento) {
       const m = (await getMantenimientos()).filter((x) => enRango(x.fecha));
       hoja('Mantenimiento',
-        ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base'],
-        m.map((x) => [x.fecha, x.impresoraId, x.tipo, x.descripcion, numero(x.costo), x.responsable, x.programacion ?? '', x.proximaFecha ?? '', numero(x.cadaHoras), numero(x.horasBase)]));
+        ['Fecha', 'Impresora ID', 'Naturaleza', 'Categoría de gasto', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base'],
+        m.map((x) => [x.fecha, x.impresoraId, x.naturaleza, x.categoria ?? '', x.descripcion, numero(x.costo), x.responsable, x.programacion ?? '', x.proximaFecha ?? '', numero(x.cadaHoras), numero(x.horasBase)]));
     }
 
     const periodo = desde || hasta ? `-${desde || 'inicio'}_a_${hasta || hoyISO()}` : `-${hoyISO()}`;

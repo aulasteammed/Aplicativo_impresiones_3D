@@ -460,7 +460,7 @@ const TABS_INVENTARIO: Record<string, string[]> = {
   Filamentos: ['ID', 'Tipo', 'Color', 'Marca', 'Rollos', 'Comenzado', 'Gramos restantes', 'Umbral alerta (g)', 'Fecha registro', 'Notas'],
   Movimientos: ['Fecha', 'Filamento ID', 'Proyecto', 'Gramos', 'Motivo'],
   Impresoras: ['ID', 'Nombre', 'Modelo', 'Estado', 'Horas acumuladas', 'Notas'],
-  Mantenimiento: ['Fecha', 'Impresora ID', 'Tipo', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base'],
+  Mantenimiento: ['Fecha', 'Impresora ID', 'Naturaleza', 'Descripción', 'Costo (COP)', 'Responsable', 'Programación', 'Próxima fecha', 'Cada N horas', 'Horas base', 'Categoría de gasto'],
   Umbrales: ['ID', 'Variable', 'Valor', 'Umbral (g)'],
 };
 
@@ -597,17 +597,26 @@ export async function eliminarImpresora(id: string): Promise<void> {
 
 export async function getMantenimientos(): Promise<Mantenimiento[]> {
   await asegurarInventario();
-  const filas = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A2:J`);
+  const filas = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A2:K`);
   return filas
-    .map((f, i) => ({
-      fila: i + 2, // fila real en la hoja (para editar/eliminar)
-      fecha: f[0], impresoraId: f[1] ?? '', tipo: f[2] ?? '', descripcion: f[3] ?? '',
-      costo: f[4] ? num(f[4]) : undefined, responsable: f[5] ?? '',
-      programacion: (f[6] as Mantenimiento['programacion']) || 'ninguna',
-      proximaFecha: f[7] ?? '',
-      cadaHoras: f[8] ? num(f[8]) : undefined,
-      horasBase: f[9] !== undefined && f[9] !== '' ? num(f[9]) : undefined,
-    }))
+    .map((f, i) => {
+      const c = String(f[2] ?? '').trim();       // C: Naturaleza (antes "Tipo")
+      const k = String(f[10] ?? '').trim();       // K: Categoría de gasto
+      // Compat con datos viejos donde el único campo "Tipo" (C) era una categoría.
+      const cEsCategoria = /^(consumible|repuesto|servicio)$/i.test(c);
+      return {
+        fila: i + 2, // fila real en la hoja (para editar/eliminar)
+        fecha: f[0], impresoraId: f[1] ?? '',
+        naturaleza: cEsCategoria ? '' : c,
+        categoria: k || (cEsCategoria ? c.toLowerCase() : ''),
+        descripcion: f[3] ?? '',
+        costo: f[4] ? num(f[4]) : undefined, responsable: f[5] ?? '',
+        programacion: (f[6] as Mantenimiento['programacion']) || 'ninguna',
+        proximaFecha: f[7] ?? '',
+        cadaHoras: f[8] ? num(f[8]) : undefined,
+        horasBase: f[9] !== undefined && f[9] !== '' ? num(f[9]) : undefined,
+      };
+    })
     .filter((m) => m.fecha)
     .reverse();
 }
@@ -615,8 +624,8 @@ export async function getMantenimientos(): Promise<Mantenimiento[]> {
 export async function registrarMantenimiento(m: Mantenimiento): Promise<void> {
   await asegurarInventario();
   await anexarFilas(config.sheetInventarioId, `'Mantenimiento'!A1`, [
-    [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable,
-     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', m.horasBase ?? ''],
+    [m.fecha, m.impresoraId, m.naturaleza, m.descripcion, m.costo ?? '', m.responsable,
+     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', m.horasBase ?? '', m.categoria ?? ''],
   ]);
 }
 
@@ -624,13 +633,13 @@ export async function actualizarMantenimiento(m: Mantenimiento): Promise<void> {
   await asegurarInventario();
   const fila = m.fila;
   if (!fila || fila < 2) throw new Error('Registro de mantenimiento no identificado; actualiza la vista.');
-  const existente = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:J${fila}`);
+  const existente = await leerRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:K${fila}`);
   if (!existente[0] || !existente[0][0]) throw new Error('El registro de mantenimiento cambió; actualiza la vista.');
   // La "Horas base" (columna J) del registro original se PRESERVA: no se edita ni se agrega.
   const horasBase = existente[0][9] ?? '';
-  await escribirRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:J${fila}`, [
-    [m.fecha, m.impresoraId, m.tipo, m.descripcion, m.costo ?? '', m.responsable,
-     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', horasBase],
+  await escribirRango(config.sheetInventarioId, `'Mantenimiento'!A${fila}:K${fila}`, [
+    [m.fecha, m.impresoraId, m.naturaleza, m.descripcion, m.costo ?? '', m.responsable,
+     m.programacion ?? 'ninguna', m.proximaFecha ?? '', m.cadaHoras ?? '', horasBase, m.categoria ?? ''],
   ]);
 }
 
