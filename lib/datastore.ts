@@ -11,7 +11,7 @@ import {
   ItemProyecto, AlertaStock, ResultadoImpresion, UmbralAlerta,
   DatosDashboard, SolicitudDash, HistorialDash, FilamentoDash,
 } from './types';
-import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein } from './util';
+import { num, parsearHoras, hoyISO, normalizarTexto, coincideAprox, distanciaLevenshtein, FILAMENTO_PROPIO } from './util';
 import { agruparProyectos } from './google/sheets';
 
 function backend() {
@@ -102,6 +102,7 @@ export async function finalizarProyecto(
   resultado: ResultadoImpresion,
   desperdicio: number | null,
   comentarios: string,
+  desperdicioPorPieza?: Record<string, number>,
 ): Promise<{ advertencias: string[] }> {
   const b = backend();
   const advertencias: string[] = [];
@@ -121,20 +122,32 @@ export async function finalizarProyecto(
   );
   const inventarioYaAplicado = yaFinalizada || yaDescontado;
 
+  // Desperdicio POR PIEZA: si el usuario lo detalló por solicitud, se usa ese mapa
+  // (clave = marca temporal de la solicitud); si no, se reparte el total de la cama
+  // EQUITATIVAMENTE entre sus piezas. El mismo valor por pieza se descuenta del
+  // inventario y se guarda en el historial (métrica por-pieza, sin sub/sobre-conteo).
+  const hayDesperdicio = desperdicioPorPieza != null || desperdicio != null;
+  const desperdicioDe = (r: RegistroHistorial): number => {
+    let d = 0;
+    if (desperdicioPorPieza) d = Number(desperdicioPorPieza[r.marcaTemporal]) || 0;
+    else if (desperdicio != null) d = desperdicio / filas.length;
+    return Math.max(0, Math.round(d * 100) / 100);
+  };
+
   // Descuento AGREGADO por rollo (un solo ajuste por filamento aunque varias piezas
   // usen el mismo): menos escrituras y sin lecturas/escrituras repetidas del rollo.
-  const totalEstimado = filas.reduce((acc, r) => acc + num(r.gramos), 0);
   const descuentoPorRollo = new Map<string, number>();
   for (const r of filas) {
     const gramosItem = num(r.gramos);
-    const proporcion = totalEstimado > 0 ? gramosItem / totalEstimado : 1 / filas.length;
-    const desperdicioItem = (desperdicio ?? 0) * proporcion;
+    const despRow = desperdicioDe(r);
 
     const aDescontar = resultado === 'Exitoso'
-      ? gramosItem + desperdicioItem
-      : (desperdicio !== null ? desperdicioItem : gramosItem);
+      ? gramosItem + despRow
+      : (hayDesperdicio ? despRow : gramosItem);
     if (aDescontar <= 0) continue;
 
+    // Filamento propio del solicitante: no se descuenta del inventario (sin advertencia).
+    if (r.filamentoId === FILAMENTO_PROPIO) continue;
     if (!r.filamentoId) {
       advertencias.push(`El ítem de ${r.nombre} no tiene rollo asignado; no se descontó inventario.`);
       continue;
@@ -186,8 +199,11 @@ export async function finalizarProyecto(
     }
   }
 
-  // Marca de finalización (última escritura): Estado=Finalizada + resultado/desperdicio/comentarios.
-  await b.finalizarProyectoEnHistorial(codigo, resultado, desperdicio ?? '', comentarios);
+  // Marca de finalización (última escritura): cada pieza guarda SU desperdicio (o '' si
+  // no se reportó ninguno) además de Estado=Finalizada, resultado y comentarios.
+  const desperdicioPorFila: Record<string, number | ''> = {};
+  for (const r of filas) desperdicioPorFila[r.marcaTemporal] = hayDesperdicio ? desperdicioDe(r) : '';
+  await b.finalizarProyectoEnHistorial(codigo, resultado, desperdicioPorFila, comentarios);
 
   return { advertencias };
 }
@@ -523,19 +539,13 @@ export async function getDatosDashboard(): Promise<DatosDashboard> {
     };
   });
 
-  // El desperdicio se reporta UNA sola vez por cama, pero se guarda igual en todas
-  // sus filas (una por pieza). Para que la suma del tablero no lo multiplique, se
-  // atribuye solo a la primera fila de cada código (0 en las demás).
-  const desperdicioVisto = new Set<string>();
+  // El desperdicio se guarda POR PIEZA (una fila por solicitud): el detallado por el
+  // usuario, o el total de la cama repartido equitativamente entre sus piezas (ver
+  // finalizarProyecto). Por eso el tablero SUMA cada fila directamente, sin deduplicar.
   const hist: HistorialDash[] = historial.map((r) => {
-    const cod = (r.codigo || '').trim();
-    let desperdicio = num(r.desperdicio);
-    if (cod) {
-      if (desperdicioVisto.has(cod)) desperdicio = 0;
-      else desperdicioVisto.add(cod);
-    }
     return {
       mes: mesDeFecha(r.marcaTemporal),
+      codigo: (r.codigo || '').trim(),
       nombre: r.nombre || '', correo: r.correo || '',
       rol: r.rol || '(sin dato)',
       programa: r.programa || 'No aplica',
@@ -547,7 +557,7 @@ export async function getDatosDashboard(): Promise<DatosDashboard> {
       resultado: r.resultado || '(en curso)',
       gramos: num(r.gramos),
       horas: parsearHoras(r.tiempoHoras),
-      desperdicio,
+      desperdicio: num(r.desperdicio),
     };
   });
 

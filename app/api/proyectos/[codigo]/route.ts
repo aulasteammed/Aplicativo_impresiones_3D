@@ -50,8 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { codigo: st
 export async function POST(req: NextRequest, { params }: { params: { codigo: string } }) {
   try {
     const codigo = decodeURIComponent(params.codigo);
-    const { resultado, desperdicio, comentarios } = (await req.json()) as {
-      resultado: ResultadoImpresion; desperdicio?: number | null; comentarios?: string;
+    const { resultado, desperdicio, desperdicioPorPieza, comentarios } = (await req.json()) as {
+      resultado: ResultadoImpresion; desperdicio?: number | null; desperdicioPorPieza?: Record<string, number>; comentarios?: string;
     };
     if (!['Exitoso', 'Fallido'].includes(resultado)) {
       return NextResponse.json({ error: 'El resultado debe ser "Exitoso" o "Fallido"' }, { status: 400 });
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { codigo: str
       resultado,
       desperdicio === undefined || desperdicio === null || isNaN(Number(desperdicio)) ? null : Number(desperdicio),
       comentarios ?? '',
+      desperdicioPorPieza && typeof desperdicioPorPieza === 'object' ? desperdicioPorPieza : undefined,
     );
     return NextResponse.json({ ok: true, advertencias });
   } catch (e) {

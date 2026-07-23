@@ -17,7 +17,7 @@ Usa **Google Sheets como base de datos** (la hoja de respuestas del Google Forms
 2. [Requisitos previos](#requisitos-previos)
 3. [Inicio rápido (modo demo)](#inicio-rápido-modo-demo)
 4. [Conectar los servicios de Google (modo real)](#conectar-los-servicios-de-google-modo-real)
-5. [Variables de entorno (`.env.local`)](#variables-de-entorno-envlocal)
+5. [Variables de entorno (`.env.local`)](#variables-de-entorno-envlocal) · [Clave de acceso](#clave-de-acceso-protección-de-la-app)
 6. [Estructura de los Google Sheets (columnas)](#estructura-de-los-google-sheets-columnas)
 7. [Lógica de negocio importante](#lógica-de-negocio-importante)
 8. [Despliegue](#despliegue)
@@ -147,9 +147,36 @@ SHEET_ID_INVENTARIO=
 # --- 3. Correo (Apps Script Web App) ---
 APPS_SCRIPT_URL=
 APPS_SCRIPT_TOKEN=                # el mismo TOKEN_SECRETO de Codigo.gs
+
+# --- 4. Clave de acceso (proteger la app) ---
+CLAVE_ACCESO=                     # vacío = sin protección; con valor = pide clave al entrar
 ```
 
 **Modo demo vs real**: la app usa modo real solo si hay credenciales (`GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_APPLICATION_CREDENTIALS`) **y** los 3 `SHEET_ID_*`. Si falta cualquiera, corre en demo. El correo es opcional: sin `APPS_SCRIPT_*` el cambio de estado se aplica igual, solo que no se envía la notificación. **Crear solicitudes no necesita configuración extra**: se escriben directamente en la hoja de respuestas.
+
+### Clave de acceso (protección de la app)
+
+Por defecto, **las páginas y la API no piden identificación**. Eso está bien mientras la app corre **solo en tu computador** (`localhost`), pero **al publicarla en internet (Vercel) cualquiera con la URL podría leer o borrar los datos**. Para evitarlo, la app trae una protección por **clave compartida**:
+
+- Defines **una sola contraseña** en la variable `CLAVE_ACCESO`. Al abrir la app, pide esa clave **una vez** (queda recordada en el navegador mediante una cookie segura); luego el uso es normal. Sin la clave correcta, las páginas redirigen a la pantalla de acceso y la API responde *"No autorizado"*.
+- Si `CLAVE_ACCESO` está **vacía o sin definir**, la **protección queda desactivada** (la app funciona como antes). Útil para probar en local.
+- La clave **nunca** viaja en el código ni al navegador: solo vive como variable de entorno (en tu `.env.local` y en el panel de Vercel). En la cookie se guarda un valor derivado (hash), no la clave en texto.
+
+**Dónde se guarda la contraseña**
+
+| Dónde | Para qué | Cómo se pone |
+|---|---|---|
+| `.env.local` (tu PC) | Pruebas locales | Editas la línea `CLAVE_ACCESO=` (este archivo **no** se sube a GitHub) |
+| **Vercel → Settings → Environment Variables** | La app publicada | Agregas la variable `CLAVE_ACCESO` con su valor |
+
+> El archivo `.env.local` **nunca** se sube (está en `.gitignore`), por eso Vercel no lo ve: la clave de la app publicada se configura **aparte**, en el panel de Vercel, junto a las credenciales de Google.
+
+**Cómo cambiar la contraseña**
+
+- **En la app publicada**: Vercel → tu proyecto → **Settings → Environment Variables** → edita `CLAVE_ACCESO` → **Save** → **Redeploy** (para que tome el valor nuevo). Al cambiarla, todas las sesiones abiertas quedan invalidadas y hay que ingresar la nueva.
+- **En tu PC**: edita `CLAVE_ACCESO` en `.env.local` y reinicia la app.
+
+> Cada persona autorizada usa la **misma** clave (no hay cuentas individuales). Si algún día necesitas saber *quién* hizo cada cambio o dar permisos distintos por persona, se puede migrar a inicio de sesión con cuentas individuales (p. ej. NextAuth).
 
 ---
 
@@ -257,7 +284,8 @@ npm start        # http://localhost:3000
 1. Sube el proyecto a un repositorio de GitHub (el `.gitignore` ya excluye `.env.local` y `*.traineddata`).
 2. En [vercel.com](https://vercel.com) → **New Project** → importa el repositorio (detecta Next.js automáticamente).
 3. En **Settings → Environment Variables** agrega las mismas variables del `.env.local`.
-4. **Deploy**. La app queda en una URL pública.
+   - ⚠️ **Importante**: define **`CLAVE_ACCESO`** con una contraseña. Como la URL de Vercel es **pública**, sin esta clave cualquiera podría leer o borrar los datos (ver [Clave de acceso](#clave-de-acceso-protección-de-la-app)).
+4. **Deploy**. La app queda en una URL pública, protegida por la clave.
 
 > Notas: el OCR corre en el runtime de Node (ya configurado con `serverComponentsExternalPackages` para `tesseract.js`, `jimp` y `googleapis` en `next.config.mjs`). La primera petición de OCR descarga el modelo (~5 MB), por lo que puede tardar un poco en un arranque en frío.
 
@@ -266,8 +294,12 @@ npm start        # http://localhost:3000
 ## Estructura del proyecto
 
 ```
+middleware.ts      "Portero": exige la clave de acceso (CLAVE_ACCESO) en páginas y API
 app/               Páginas (las 5 ventanas) y API routes (app/api/**)
+  login/           Pantalla de clave de acceso
+  api/auth/        Iniciar/cerrar sesión y estado de protección
 lib/
+  auth.ts          Clave compartida: cookie de sesión y validación (Edge + Node)
   config.ts        Lee variables de entorno; decide modo demo vs real
   datastore.ts     Fachada de datos + reglas de negocio (camas, inventario, dashboard)
   demo.ts          Almacén en memoria (modo demo)

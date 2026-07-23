@@ -536,13 +536,31 @@ export default function Dashboard() {
   const porMes = (arr: Fila[]) => meses.map((mm) => ({ ...mesCorto(mm), v: arr.filter((r) => r.mes === mm).length }));
 
   // Camas
-  const camActivas = hist.filter((h) => h.estado === 'Activa');
-  const camPausa = hist.filter((h) => h.estado === 'En pausa');
-  const camCurso = camActivas.concat(camPausa);
-  const gCurso = camCurso.reduce((a, h) => a + (+h.gramos || 0), 0);
-  const hCurso = camCurso.reduce((a, h) => a + (+h.horas || 0), 0);
+  // Camas en curso AGRUPADAS por código: una cama con N piezas produce N filas con el
+  // mismo estado e impresora, así que se cuentan camas distintas (no filas); los
+  // gramos/horas suman las piezas de cada cama.
+  const camasMap = new Map<string, { codigo: string; estado: string; impresora: string; materiales: Set<string>; gramos: number; horas: number; piezas: number }>();
+  hist.forEach((h) => {
+    if (!h.codigo) return; // filas sin código no forman una cama (igual que la ventana Camas)
+    // La ventana Camas (agruparProyectos) trata un estado vacío como 'Activa'; se
+    // replica aquí para que los conteos del tablero coincidan exactamente con ella.
+    const estado = h.estado === '(sin dato)' ? 'Activa' : h.estado;
+    if (estado !== 'Activa' && estado !== 'En pausa') return; // Finalizada u otro: no es cama en curso
+    const cod = h.codigo;
+    const c = camasMap.get(cod) ?? { codigo: cod, estado, impresora: h.impresora, materiales: new Set<string>(), gramos: 0, horas: 0, piezas: 0 };
+    c.gramos += +h.gramos || 0;
+    c.horas += +h.horas || 0;
+    c.piezas += 1;
+    if (h.material && h.material !== '(sin dato)') c.materiales.add(h.material);
+    camasMap.set(cod, c);
+  });
+  const camas = Array.from(camasMap.values());
+  const nActivas = camas.filter((c) => c.estado === 'Activa').length;
+  const nPausa = camas.filter((c) => c.estado === 'En pausa').length;
+  const gCurso = camas.reduce((a, c) => a + c.gramos, 0);
+  const hCurso = camas.reduce((a, c) => a + c.horas, 0);
   const CAMA_PILL: Record<string, string> = { 'Activa': 'p-ok', 'En pausa': 'p-warn' };
-  const camLista = [...camCurso].sort((a, b) => (+b.horas || 0) - (+a.horas || 0)).slice(0, 8);
+  const camLista = [...camas].sort((a, b) => b.horas - a.horas).slice(0, 8);
 
   // Producción
   const fin = hist.filter((h) => h.resultado === 'Exitoso' || h.resultado === 'Fallido');
@@ -660,20 +678,20 @@ export default function Dashboard() {
 
       <div className="subhdr">Camas de impresión</div>
       <div className="grid k4">
-        <Kpi l="Camas activas" v={camActivas.length} s="imprimiendo ahora" cls="acc" />
-        <Kpi l="En pausa" v={camPausa.length} s="requieren decisión" cls={camPausa.length ? 'warnb' : ''} />
-        <Kpi l="Material en curso" v={`${nf(gCurso)} g`} s={`${camCurso.length} camas sin finalizar`} />
+        <Kpi l="Camas activas" v={nActivas} s="imprimiendo ahora" cls="acc" />
+        <Kpi l="En pausa" v={nPausa} s="requieren decisión" cls={nPausa ? 'warnb' : ''} />
+        <Kpi l="Material en curso" v={`${nf(gCurso)} g`} s={`${camas.length} camas sin finalizar`} />
         <Kpi l="Horas en curso" v={`${(Math.round(hCurso * 10) / 10).toLocaleString('es-CO')} h`} s="carga activa estimada" />
       </div>
       <div className="grid" style={{ marginTop: 14 }}>
         <div className="dcard">
           <div className="chart-h">Camas en curso ahora</div>
           <div className="chart-cap">Lo que está montado en las camas en este momento — activas y en pausa.</div>
-          {camLista.length ? camLista.map((h, i) => (
-            <div className="lrow" key={i}>
-              <span className={`pill ${CAMA_PILL[h.estado] || 'p-mut'}`}>{h.estado}</span>
-              <div className="ln"><b>{h.nombre}</b><div className="lsub">{h.impresora === '(sin dato)' ? 'Impresora sin asignar' : h.impresora} · {h.material === '(sin dato)' ? 'material sin dato' : h.material}</div></div>
-              <span className="lval">{h.gramos ? `${nf(h.gramos)} g` : '—'}{h.horas ? ` · ${Math.round(h.horas * 10) / 10} h` : ''}</span>
+          {camLista.length ? camLista.map((c) => (
+            <div className="lrow" key={c.codigo}>
+              <span className={`pill ${CAMA_PILL[c.estado] || 'p-mut'}`}>{c.estado}</span>
+              <div className="ln"><b>{c.codigo}</b><div className="lsub">{c.impresora === '(sin dato)' ? 'Impresora sin asignar' : c.impresora} · {c.piezas} pieza{c.piezas === 1 ? '' : 's'}{c.materiales.size ? ` · ${Array.from(c.materiales).join(', ')}` : ''}</div></div>
+              <span className="lval">{c.gramos ? `${nf(c.gramos)} g` : '—'}{c.horas ? ` · ${Math.round(c.horas * 10) / 10} h` : ''}</span>
             </div>
           )) : <p className="empty">Sin camas activas o en pausa con estos filtros.</p>}
         </div>

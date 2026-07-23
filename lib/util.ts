@@ -150,6 +150,10 @@ export const MATERIALES_CANONICOS = [
   'Resina', 'PLA+', 'PLA-CF', 'PETG-CF', 'PA-CF', 'PC-CF',
 ];
 
+/** Marcador de "filamento propio" (lo trae el solicitante): se guarda como
+ *  filamentoId de la pieza pero NO se descuenta del inventario al finalizar. */
+export const FILAMENTO_PROPIO = 'PROPIO';
+
 /** Normaliza el material escrito por el usuario a su forma canónica con tolerancia
  *  a mayúsculas/acentos y a pequeños errores de tecleo (p. ej. "petg" y "pteg" →
  *  "PETG"). Si no se parece a ninguno conocido, conserva lo escrito (material nuevo). */

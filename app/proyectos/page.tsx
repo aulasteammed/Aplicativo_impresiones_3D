@@ -9,7 +9,7 @@ import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
-import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso } from '@/lib/util';
+import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso, MATERIALES_CANONICOS, FILAMENTO_PROPIO } from '@/lib/util';
 
 export default function PaginaProyectos() {
   const { datos, cargando, error, recargar } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos');
@@ -589,7 +589,7 @@ function ModalProyecto({
                           <button type="button" onClick={() => quitarItem(it._key)} className="shrink-0 text-sm text-rose-500 hover:text-rose-700" title="Quitar esta solicitud de la cama">✕</button>
                         </div>
                         <div>
-                          <label className="label">Tiempo (h / min)</label>
+                          <label className="label">Tiempo (h / min) *</label>
                           <div className="flex gap-1">
                             <input type="number" min="0" className="input" placeholder="h" value={horas || ''}
                               onChange={(e) => actualizarItem(it._key, { tiempoHoras: (parseInt(e.target.value) || 0) + minutos / 60 })} />
@@ -598,18 +598,18 @@ function ModalProyecto({
                           </div>
                         </div>
                         <div>
-                          <label className="label">Gramos</label>
+                          <label className="label">Gramos *</label>
                           <input type="number" min="0" step="0.1" className="input" value={it.gramos || ''}
                             onChange={(e) => actualizarItem(it._key, { gramos: parseFloat(e.target.value) || 0 })} />
                         </div>
                         <div>
-                          <label className="label">Material</label>
+                          <label className="label">Material *</label>
                           <Combobox
                             valor={it.material}
                             onCambio={(v) => actualizarItem(it._key, { material: v })}
                             onBlur={(v) => actualizarItem(it._key, cambiosMaterial(it._key, v))}
-                            opciones={materialesInventario}
-                            placeholder="Elija un material del inventario"
+                            opciones={it.filamentoId === FILAMENTO_PROPIO ? MATERIALES_CANONICOS : materialesInventario}
+                            placeholder={it.filamentoId === FILAMENTO_PROPIO ? 'Escriba el material del filamento propio' : 'Elija un material del inventario'}
                           />
                         </div>
                         <div>
@@ -618,19 +618,24 @@ function ModalProyecto({
                             className={`input ${insuficiente ? '!border-amber-400 !ring-amber-200' : ''}`}
                             value={it.filamentoId ?? ''}
                             onChange={(e) => {
-                              const id = e.target.value || undefined;
+                              const v = e.target.value;
+                              if (v === FILAMENTO_PROPIO) { actualizarItem(it._key, { filamentoId: FILAMENTO_PROPIO }); return; }
+                              const id = v || undefined;
                               const fl = filamentos.find((f) => f.id === id);
                               actualizarItem(it._key, fl ? { filamentoId: id, material: canonicalizarMaterial(String(fl.tipo)) } : { filamentoId: id });
                             }}
                           >
                             <option value="">Sin asignar</option>
+                            <option value={FILAMENTO_PROPIO}>Filamento propio (lo trae el solicitante)</option>
                             {opcionesFil.map((fl) => (
                               <option key={fl.id} value={fl.id}>{desc(fl)} — {Math.round(fl.gramosRestantes)} g disp.</option>
                             ))}
                           </select>
                         </div>
                       </div>
-                      {fil ? (
+                      {it.filamentoId === FILAMENTO_PROPIO ? (
+                        <p className="mt-2 text-xs text-amber-700">⚠ Filamento proporcionado por el usuario, no se descontará del inventario. Registre el <b>material</b> y los <b>gramos</b> para la trazabilidad de la impresión.</p>
+                      ) : fil ? (
                         <p className={`mt-2 text-xs ${insuficiente ? 'text-amber-700' : 'text-slate-500'}`}>
                           {insuficiente
                             ? `⚠ Requiere ${Math.round(it.gramos)} g y solo hay ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontará igual al finalizar (puede quedar en 0).`
@@ -728,22 +733,31 @@ function ModalFinalizar({
 }) {
   const [resultado, setResultado] = useState<'Exitoso' | 'Fallido'>('Exitoso');
   const [desperdicio, setDesperdicio] = useState('');
+  const [porPieza, setPorPieza] = useState(false);
+  const [despPieza, setDespPieza] = useState<Record<string, string>>({});
   const [comentarios, setComentarios] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const multi = proyecto.items.length > 1;
 
   async function confirmar() {
     setEnviando(true);
     setError('');
     try {
+      const cuerpo: { resultado: string; comentarios: string; desperdicio?: number | null; desperdicioPorPieza?: Record<string, number> } = { resultado, comentarios };
+      if (multi && porPieza) {
+        // Desperdicio detallado por pieza (una casilla por solicitud).
+        const mapa: Record<string, number> = {};
+        proyecto.items.forEach((it) => { mapa[it.solicitudId] = parseFloat(despPieza[it.solicitudId] || '') || 0; });
+        cuerpo.desperdicioPorPieza = mapa;
+      } else {
+        // Total de la cama (se repartirá equitativamente entre las piezas en el backend).
+        cuerpo.desperdicio = desperdicio.trim() === '' ? null : parseFloat(desperdicio);
+      }
       const res = await fetch(`/api/proyectos/${encodeURIComponent(proyecto.codigo)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resultado,
-          desperdicio: desperdicio.trim() === '' ? null : parseFloat(desperdicio),
-          comentarios,
-        }),
+        body: JSON.stringify(cuerpo),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Error finalizando la cama');
@@ -772,10 +786,33 @@ function ModalFinalizar({
             <option>Fallido</option>
           </select>
         </div>
-        <div>
-          <label className="label">Material desperdiciado en g (opcional)</label>
-          <input type="number" min="0" step="0.1" className="input" value={desperdicio} onChange={(e) => setDesperdicio(e.target.value)} placeholder="Ej: 12" />
-        </div>
+        {multi && (
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm">
+            <input type="checkbox" className="accent-steam-600" checked={porPieza} onChange={(e) => setPorPieza(e.target.checked)} />
+            <span>Ingresar el desperdicio <b>por pieza</b> (una casilla por solicitud)</span>
+          </label>
+        )}
+        {multi && porPieza ? (
+          <div className="space-y-2">
+            <p className="label">Material desperdiciado por pieza en g (opcional)</p>
+            {proyecto.items.map((it) => (
+              <div key={it.solicitudId} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{it.nombre}</p>
+                  <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
+                </div>
+                <input type="number" min="0" step="0.1" className="input w-28" placeholder="g" value={despPieza[it.solicitudId] ?? ''}
+                  onChange={(e) => setDespPieza((p) => ({ ...p, [it.solicitudId]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <label className="label">Material desperdiciado en g (opcional)</label>
+            <input type="number" min="0" step="0.1" className="input" value={desperdicio} onChange={(e) => setDesperdicio(e.target.value)} placeholder="Ej: 12" />
+            {multi && <p className="mt-1 text-xs text-slate-500">Se repartirá equitativamente entre las {proyecto.items.length} piezas de la cama.</p>}
+          </div>
+        )}
         <div>
           <label className="label">Comentarios (opcional)</label>
           <textarea className="input min-h-[80px]" value={comentarios} onChange={(e) => setComentarios(e.target.value)} />

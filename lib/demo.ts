@@ -282,14 +282,15 @@ export async function eliminarProyecto(codigo: string): Promise<void> {
 }
 
 export async function finalizarProyectoEnHistorial(
-  codigo: string, resultado: string, desperdicio: number | '', comentarios: string,
+  codigo: string, resultado: string, desperdicios: Record<string, number | ''>, comentarios: string,
 ): Promise<RegistroHistorial[]> {
   const filas = store().historial.filter((r) => r.codigo === codigo);
   if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   for (const r of filas) {
+    const d = desperdicios[r.marcaTemporal] ?? '';
     r.estado = 'Finalizada';
     r.resultado = resultado;
-    r.desperdicio = desperdicio === '' ? '' : String(desperdicio);
+    r.desperdicio = d === '' ? '' : String(d);
     r.comentarios = comentarios;
   }
   return filas;

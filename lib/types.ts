@@ -216,6 +216,7 @@ export interface SolicitudDash {
 
 export interface HistorialDash {
   mes: string;
+  codigo: string;     // código de la cama (para agrupar piezas de una misma cama)
   nombre: string;
   correo: string;
   rol: string;

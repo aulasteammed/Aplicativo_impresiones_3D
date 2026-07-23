@@ -437,16 +437,19 @@ export async function eliminarProyecto(codigo: string): Promise<void> {
 }
 
 export async function finalizarProyectoEnHistorial(
-  codigo: string, resultado: string, desperdicio: number | '', comentarios: string,
+  codigo: string, resultado: string, desperdicios: Record<string, number | ''>, comentarios: string,
 ): Promise<RegistroHistorial[]> {
   const registros = await getHistorial();
   const filas = registros.filter((r) => r.codigo === codigo);
   if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
   for (const r of filas) {
+    // Cada pieza guarda SU desperdicio (columna R): entrado por pieza o el reparto
+    // equitativo del total; así el histórico queda por-pieza y no se sub/sobre-cuenta.
+    const d = desperdicios[r.marcaTemporal] ?? '';
     await escribirRango(
       config.sheetHistorialId,
       `'${config.tabHistorial}'!P${r.fila}:S${r.fila}`,
-      [['Finalizada', resultado, desperdicio === '' ? '' : desperdicio, comentarios]],
+      [['Finalizada', resultado, d === '' ? '' : d, comentarios]],
     );
   }
   return filas;
