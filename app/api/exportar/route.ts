@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { getSolicitudes, getProyectos, getHistorial, getFilamentos, getMantenimientos } from '@/lib/datastore';
-import { esCamaEnCurso, fechaISO, fechaDeCodigoCama, hoyISO } from '@/lib/util';
+import { esCamaEnCurso, fechaISO, fechaDeCodigoCama, hoyISO, sanearCeldaHoja } from '@/lib/util';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
       const cab = ws.getRow(1);
       cab.font = { bold: true };
       cab.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-      filas.forEach((f) => ws.addRow(f));
+      // Defensa extra contra inyección de fórmulas al abrir/re-exportar el archivo.
+      filas.forEach((f) => ws.addRow(f.map(sanearCeldaHoja)));
       columnas.forEach((c, i) => { ws.getColumn(i + 1).width = Math.min(48, Math.max(12, c.length + 2)); });
       ws.views = [{ state: 'frozen', ySplit: 1 }];
     };

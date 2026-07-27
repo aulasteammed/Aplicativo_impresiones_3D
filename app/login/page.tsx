@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Impresora3D from '@/components/Impresora3D';
 
 export default function LoginPage() {
   const [clave, setClave] = useState('');
@@ -36,7 +37,7 @@ export default function LoginPage() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-steam-gradient p-4">
       <form onSubmit={entrar} className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
         <div className="text-center">
-          <div className="text-4xl" aria-hidden>🖨️</div>
+          <Impresora3D className="mx-auto h-14 w-14 text-steam-600" title="Impresora 3D" />
           <h1 className="mt-3 text-xl font-bold text-gray-900">Aula STEAM</h1>
           <p className="mt-1 text-sm text-gray-500">Gestión de Impresión 3D</p>
         </div>

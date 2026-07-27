@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Impresora3D from '@/components/Impresora3D';
 
-const NAV = [
+const NAV: { href: string; label: string; icon: ReactNode }[] = [
   { href: '/', label: 'Dashboard', icon: '📊' },
   { href: '/solicitudes', label: 'Solicitudes', icon: '📥' },
-  { href: '/proyectos', label: 'Camas de impresión', icon: '🖨️' },
+  { href: '/proyectos', label: 'Camas de impresión', icon: <Impresora3D className="h-[1.2em] w-[1.2em]" /> },
   { href: '/historial', label: 'Historial', icon: '📚' },
   { href: '/inventario', label: 'Inventario', icon: '🧵' },
 ];

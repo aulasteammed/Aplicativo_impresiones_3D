@@ -38,6 +38,31 @@ body {
   }
 }
 
+/* ===== Logo animado de impresora 3D (componente Impresora3D) ===== */
+.i3d { display: inline-block; vertical-align: -0.18em; overflow: visible; }
+.i3d-head { animation: i3d-slide 2.4s ease-in-out infinite; }
+.i3d-obj {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: i3d-build 4.8s ease-in-out infinite;
+}
+@keyframes i3d-slide {
+  0%, 100% { transform: translateX(-2.4px); }
+  50%      { transform: translateX(2.4px); }
+}
+@keyframes i3d-build {
+  0%       { transform: scaleY(0.05); opacity: 0; }
+  10%      { opacity: 1; }
+  55%      { transform: scaleY(1); opacity: 1; }
+  85%      { transform: scaleY(1); opacity: 1; }
+  96%      { transform: scaleY(1); opacity: 0; }
+  100%     { transform: scaleY(0.05); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .i3d-head { animation: none; }
+  .i3d-obj  { animation: none; transform: scaleY(1); opacity: 1; }
+}
+
 /* ===== Dashboard interactivo (ventana principal) — portado del prototipo ===== */
 .dash .num{font-variant-numeric:tabular-nums}
 .dash .sec{margin:26px 0 14px}

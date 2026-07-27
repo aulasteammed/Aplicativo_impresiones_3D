@@ -255,8 +255,9 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
   - **Exitoso** → descuenta los gramos estimados de cada pieza + el desperdicio reportado (repartido proporcionalmente entre los rollos usados).
   - **Fallido** → descuenta solo el desperdicio reportado (o los gramos estimados si no se reportó).
   - Cada descuento queda en la pestaña `Movimientos` y suma horas a la impresora.
-  - El desperdicio se reporta **una sola vez por cama** (aunque se guarde en cada fila de la cama); el Dashboard lo cuenta una sola vez para no inflar el total.
+  - El desperdicio se guarda **por pieza** (una fila por solicitud): al finalizar, el usuario puede ingresarlo discretizado por pieza o dar un total de la cama, que entonces se **reparte equitativamente** entre sus piezas. El Dashboard **suma** cada fila.
 - **Exportar a Excel**: desde el Dashboard, el botón **Exportar** genera un `.xlsx` (una hoja por conjunto: solicitudes, camas, historial, filamentos, mantenimiento) y permite acotar por **rango de fechas**.
+- **Protección contra inyección de fórmulas**: todo texto que la app escribe en los Google Sheets o exporta al `.xlsx` se **sanea** (`sanearCeldaHoja` en `lib/util.ts`): un valor que empiece por `=`, `+`, `-` o `@` se antepone con un apóstrofo para que la hoja lo trate como **texto** y no como fórmula viva (evita fugas del tipo `=IMPORTXML(...)`). Los números —incluidos los negativos— se dejan intactos. En Google Sheets el apóstrofo no se muestra.
 - **Actualización "en vivo"**: cada tabla se refresca automáticamente (~60 s, en pausa cuando la pestaña no está visible) y con el botón **Actualizar**.
 
 ---

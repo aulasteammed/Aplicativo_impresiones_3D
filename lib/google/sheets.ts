@@ -8,7 +8,7 @@ import {
   Filamento, MovimientoInventario, Impresora, Mantenimiento, EstadoProyecto, UmbralAlerta,
   NuevaSolicitud,
 } from '../types';
-import { normalizarEstado, extraerCorreo, num, marcaTemporalColombia } from '../util';
+import { normalizarEstado, extraerCorreo, num, marcaTemporalColombia, sanearCeldaHoja } from '../util';
 
 // Estado COMPARTIDO vía globalThis: sobrevive al hot-reload del dev server y, sobre
 // todo, se comparte entre todas las rutas del servidor (Next empaqueta cada ruta por
@@ -67,12 +67,18 @@ async function leerRango(spreadsheetId: string, range: string): Promise<string[]
   return datos;
 }
 
+// Todas las escrituras pasan por aquí, así que este es el punto único donde se sanea
+// el texto contra la inyección de fórmulas (ver sanearCeldaHoja).
+function sanear(values: (string | number)[][]): (string | number)[][] {
+  return values.map((fila) => fila.map(sanearCeldaHoja));
+}
+
 async function escribirRango(spreadsheetId: string, range: string, values: (string | number)[][]) {
   await cliente().spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: 'USER_ENTERED',
-    requestBody: { values },
+    requestBody: { values: sanear(values) },
   });
   invalidarCacheLecturas();
 }
@@ -83,7 +89,7 @@ async function anexarFilas(spreadsheetId: string, range: string, values: (string
     range,
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
-    requestBody: { values },
+    requestBody: { values: sanear(values) },
   });
   invalidarCacheLecturas();
 }
