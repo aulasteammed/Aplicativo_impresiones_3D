@@ -296,6 +296,9 @@ export async function finalizarProyectoEnHistorial(
   return filas;
 }
 
+/** Paridad con sheets.precargarInventario: en demo los datos ya están en memoria. */
+export async function precargarInventario(): Promise<void> {}
+
 export async function getFilamentos(): Promise<Filamento[]> {
   return store().filamentos;
 }

@@ -258,6 +258,8 @@ Columnas **A–S** son las preexistentes; la app añade/gestiona **solo la T**.
   - El desperdicio se guarda **por pieza** (una fila por solicitud): al finalizar, el usuario puede ingresarlo discretizado por pieza o dar un total de la cama, que entonces se **reparte equitativamente** entre sus piezas. El Dashboard **suma** cada fila.
 - **Exportar a Excel**: desde el Dashboard, el botón **Exportar** genera un `.xlsx` (una hoja por conjunto: solicitudes, camas, historial, filamentos, mantenimiento) y permite acotar por **rango de fechas**.
 - **Protección contra inyección de fórmulas**: todo texto que la app escribe en los Google Sheets o exporta al `.xlsx` se **sanea** (`sanearCeldaHoja` en `lib/util.ts`): un valor que empiece por `=`, `+`, `-` o `@` se antepone con un apóstrofo para que la hoja lo trate como **texto** y no como fórmula viva (evita fugas del tipo `=IMPORTXML(...)`). Los números —incluidos los negativos— se dejan intactos. En Google Sheets el apóstrofo no se muestra.
+- **Límite de peticiones (rate-limit)**: el `middleware.ts` topa las peticiones por IP y por minuto en `/api/*` (`lib/rateLimit.ts`), para frenar bucles/floods que agotarían la cuota de Google Sheets. Es generoso para el uso normal (240/min general) y más estricto en las rutas pesadas: **exportar** (30/min) y **OCR** (40/min). Al excederlo responde `429` con `Retry-After`. Es en memoria y falla hacia lo permisivo (nunca bloquea de más a un usuario legítimo).
+- **Blindaje del OCR (bomba de descompresión)**: antes de procesar una captura, se leen sus dimensiones desde la **cabecera** (`medirImagen` en `lib/ocr.ts`) y se **rechaza** cualquier imagen de más de **40 MP** o con un lado > 20000 px — un archivo pequeño puede decodificar a una imagen enorme y agotar la memoria. Además, el escalado del preprocesado se **acota** para no exceder un presupuesto de píxeles. Las capturas normales del slicer no se ven afectadas.
 - **Actualización "en vivo"**: cada tabla se refresca automáticamente (~60 s, en pausa cuando la pestaña no está visible) y con el botón **Actualizar**.
 
 ---
@@ -301,6 +303,7 @@ app/               Páginas (las 5 ventanas) y API routes (app/api/**)
   api/auth/        Iniciar/cerrar sesión y estado de protección
 lib/
   auth.ts          Clave compartida: cookie de sesión y validación (Edge + Node)
+  rateLimit.ts     Límite de peticiones por IP en memoria (anti-flood / anti-DoS)
   config.ts        Lee variables de entorno; decide modo demo vs real
   datastore.ts     Fachada de datos + reglas de negocio (camas, inventario, dashboard)
   demo.ts          Almacén en memoria (modo demo)

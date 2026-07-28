@@ -123,7 +123,9 @@ function FiltroMulti({ dim, label, opciones, sel, abierto, onAbrir, onSet }: {
   sel: Set<string> | undefined; abierto: boolean;
   onAbrir: () => void; onSet: (next: Set<string> | null) => void;
 }) {
-  const activo = !!sel && sel.size > 0;
+  // Un conjunto VACÍO ("Ninguno") también es un filtro activo (oculta todo lo de esa
+  // categoría): el chip se resalta con contador 0 para que se vea qué causa el vacío.
+  const activo = !!sel;
   const toggle = (v: string) => {
     const base = sel ? new Set(sel) : new Set(opciones);
     base.has(v) ? base.delete(v) : base.add(v);
@@ -160,7 +162,8 @@ function FiltroMes({ opciones, sel, abierto, onAbrir, onSet }: {
   onAbrir: () => void; onSet: (next: Set<string> | null) => void;
 }) {
   const [expandido, setExpandido] = useState<string | null>(null);
-  const activo = !!sel && sel.size > 0;
+  // Igual que en FiltroMulti: el conjunto vacío ("Ninguno") cuenta como filtro activo.
+  const activo = !!sel;
   const porAnio = useMemo(() => {
     const m: Record<string, string[]> = {};
     [...opciones].sort().forEach((ym) => { const a = ym.slice(0, 4); (m[a] ??= []).push(ym); });
@@ -526,80 +529,127 @@ export default function Dashboard() {
   const sol = useMemo(() => (datos?.solicitudes ?? []).filter(pasa), [datos, filtros]);
   const hist = useMemo(() => (datos?.historial ?? []).filter(pasa), [datos, filtros]);
 
+  // TODA la agregación del tablero, memoizada con clave [datos, filtros] (vía
+  // sol/hist): abrir/cerrar un popover o el modal de exportar ya no la recalcula;
+  // solo un dato nuevo o un cambio de filtros lo hace.
+  const derivado = useMemo(() => {
+    if (!datos) return null;
+
+    // ── Sección 1 · Estado actual — datos SIN filtrar. Es una foto "en vivo" del
+    // presente (igual que la sección 4): una cama que imprime AHORA debe verse
+    // aunque el filtro de mes apunte a otro mes (el mes de una cama es el de su
+    // creación, no el de su actividad).
+    const solTodo: Fila[] = datos.solicitudes;
+    const histTodo: Fila[] = datos.historial;
+    const estVivo: Record<string, number> = {};
+    ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'].forEach((e) => {
+      estVivo[e] = solTodo.filter((s) => s.estado === e).length;
+    });
+    const vencidas = solTodo.filter((s) => s.vencida).length;
+    const aprob = estVivo['Aprobada'] + estVivo['Atendida'];
+    const resueltas = aprob + estVivo['Rechazada'];
+
+    // Camas en curso AGRUPADAS por código: una cama con N piezas produce N filas con el
+    // mismo estado e impresora, así que se cuentan camas distintas (no filas); los
+    // gramos/horas suman las piezas de cada cama.
+    const camasMap = new Map<string, { codigo: string; estado: string; impresora: string; materiales: Set<string>; gramos: number; horas: number; piezas: number }>();
+    histTodo.forEach((h) => {
+      if (!h.codigo) return; // filas sin código no forman una cama (igual que la ventana Camas)
+      // La ventana Camas (agruparProyectos) trata un estado vacío como 'Activa'; se
+      // replica aquí para que los conteos del tablero coincidan exactamente con ella.
+      const estado = h.estado === '(sin dato)' ? 'Activa' : h.estado;
+      if (estado !== 'Activa' && estado !== 'En pausa') return; // Finalizada u otro: no es cama en curso
+      const cod = h.codigo;
+      const c = camasMap.get(cod) ?? { codigo: cod, estado, impresora: h.impresora, materiales: new Set<string>(), gramos: 0, horas: 0, piezas: 0 };
+      c.gramos += +h.gramos || 0;
+      c.horas += +h.horas || 0;
+      c.piezas += 1;
+      if (h.material && h.material !== '(sin dato)') c.materiales.add(h.material);
+      camasMap.set(cod, c);
+    });
+    const camas = Array.from(camasMap.values());
+    const nActivas = camas.filter((c) => c.estado === 'Activa').length;
+    const nPausa = camas.filter((c) => c.estado === 'En pausa').length;
+    const gCurso = camas.reduce((a, c) => a + c.gramos, 0);
+    const hCurso = camas.reduce((a, c) => a + c.horas, 0);
+    const camLista = [...camas].sort((a, b) => b.horas - a.horas).slice(0, 8);
+
+    // ── Secciones 2 y 3 — responden a los filtros (sol/hist filtrados) ──
+    const meses = opciones.mes ?? [];
+    const porMes = (arr: Fila[]) => meses.map((mm) => ({ ...mesCorto(mm), v: arr.filter((r) => r.mes === mm).length }));
+    const porMesSol = porMes(sol);
+    const porMesHist = porMes(hist);
+
+    const fin = hist.filter((h) => h.resultado === 'Exitoso' || h.resultado === 'Fallido');
+    const exito = fin.length ? `${Math.round((fin.filter((h) => h.resultado === 'Exitoso').length / fin.length) * 100)}%` : '—';
+    // Los KPIs de producción suman SOLO impresiones finalizadas ("total impreso" /
+    // "acumuladas"): lo montado en camas en curso vive en la sección 1 ("en curso").
+    const matUsado = fin.reduce((a, h) => a + h.gramos, 0);
+    const horasImpresion = fin.reduce((a, h) => a + h.horas, 0);
+    const desperdicioTotal = fin.reduce((a, h) => a + h.desperdicio, 0);
+
+    // Top solicitantes
+    const pp: Record<string, number> = {};
+    sol.forEach((s) => { pp[s.nombre] = (pp[s.nombre] || 0) + 1; });
+    const top = Object.entries(pp).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    const porRol = countBy(sol, 'rol');
+    const porMotivo = countBy(sol, 'motivo');
+    const porPrograma = countBy(sol, 'programa');
+    const porServicio = countBy(sol, 'servicio');
+    const horasPorImpresora = sumBy(hist, 'impresora', 'horas');
+    const materialPorTipo = sumBy(hist, 'material', 'gramos');
+    const porResultado = countBy(hist, 'resultado');
+
+    // ── Sección 4 — mantenimiento (independiente de filtros: estado de los equipos) ──
+    const alertasMant = calcularAlertasMantenimiento(datos.impresoras, datos.mantenimientos, datos.generado);
+    const planDe = (id: string): Mantenimiento | null =>
+      datos.mantenimientos.filter((m) => m.impresoraId === id && m.programacion && m.programacion !== 'ninguna')
+        .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0] || null;
+    const vistaImp = (imp: Impresora) => {
+      const al = alertasMant.find((a) => a.impresoraId === imp.id);
+      const p = planDe(imp.id);
+      let valor = '—', sub = 'sin mantenimiento programado', ratio = 0;
+      if (p && p.programacion === 'horas' && p.cadaHoras) {
+        // Se cuenta desde el último mantenimiento de cualquier tipo (no solo el programado).
+        const desde = Math.max(0, Math.round((imp.horasAcumuladas - horasAlUltimoMantenimiento(imp.id, datos.mantenimientos)) * 10) / 10);
+        ratio = desde / p.cadaHoras; valor = `${desde} / ${p.cadaHoras} h`; sub = `cada ${p.cadaHoras} h de uso`;
+      } else if (p && p.programacion === 'fecha' && p.proximaFecha) {
+        valor = p.proximaFecha; sub = al ? (al.estado === 'vencido' ? 'vencido' : 'próximo') : 'programado';
+        ratio = al ? (al.estado === 'vencido' ? 1 : 0.9) : 0.5;
+      }
+      return { imp, al, valor, sub, ratio };
+    };
+    const impVistas = datos.impresoras.map(vistaImp).sort((a, b) => b.ratio - a.ratio);
+    const oper = datos.impresoras.filter((i) => i.estado === 'Operativa').length;
+    const noDisp = datos.impresoras.length - oper;
+    const req = alertasMant.filter((a) => a.estado === 'vencido').length;
+    const prox = alertasMant.filter((a) => a.estado === 'proximo').length;
+    const rollosBajos = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral).length;
+    const stock = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral * 1.2)
+      .map((f) => ({ ...f, ratio: f.gramos / f.umbral })).sort((a, b) => a.ratio - b.ratio).slice(0, 8);
+
+    return {
+      estVivo, vencidas, aprob, resueltas, camas, nActivas, nPausa, gCurso, hCurso, camLista,
+      porMesSol, porMesHist, fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
+      porRol, porMotivo, porPrograma, porServicio, horasPorImpresora, materialPorTipo, porResultado,
+      impVistas, oper, noDisp, req, prox, rollosBajos, stock,
+    };
+  }, [datos, sol, hist, opciones]);
+
   if (error) return <Aviso tipo="error">Error cargando el dashboard: {error}</Aviso>;
-  if (!datos) return <p className="text-sm text-slate-500">Cargando dashboard…</p>;
+  if (!datos || !derivado) return <p className="text-sm text-slate-500">Cargando dashboard…</p>;
 
-  const est = (e: string) => sol.filter((s) => s.estado === e).length;
-  const aprob = est('Aprobada') + est('Atendida'), rech = est('Rechazada');
-  const resueltas = aprob + rech;
-  const meses = opciones.mes ?? [];
-  const porMes = (arr: Fila[]) => meses.map((mm) => ({ ...mesCorto(mm), v: arr.filter((r) => r.mes === mm).length }));
+  const {
+    estVivo, vencidas, aprob, resueltas, camas, nActivas, nPausa, gCurso, hCurso, camLista,
+    fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
+    porRol, porMotivo, porPrograma, porServicio, horasPorImpresora, materialPorTipo, porResultado,
+    impVistas, oper, noDisp, req, prox, rollosBajos, stock,
+  } = derivado;
 
-  // Camas
-  // Camas en curso AGRUPADAS por código: una cama con N piezas produce N filas con el
-  // mismo estado e impresora, así que se cuentan camas distintas (no filas); los
-  // gramos/horas suman las piezas de cada cama.
-  const camasMap = new Map<string, { codigo: string; estado: string; impresora: string; materiales: Set<string>; gramos: number; horas: number; piezas: number }>();
-  hist.forEach((h) => {
-    if (!h.codigo) return; // filas sin código no forman una cama (igual que la ventana Camas)
-    // La ventana Camas (agruparProyectos) trata un estado vacío como 'Activa'; se
-    // replica aquí para que los conteos del tablero coincidan exactamente con ella.
-    const estado = h.estado === '(sin dato)' ? 'Activa' : h.estado;
-    if (estado !== 'Activa' && estado !== 'En pausa') return; // Finalizada u otro: no es cama en curso
-    const cod = h.codigo;
-    const c = camasMap.get(cod) ?? { codigo: cod, estado, impresora: h.impresora, materiales: new Set<string>(), gramos: 0, horas: 0, piezas: 0 };
-    c.gramos += +h.gramos || 0;
-    c.horas += +h.horas || 0;
-    c.piezas += 1;
-    if (h.material && h.material !== '(sin dato)') c.materiales.add(h.material);
-    camasMap.set(cod, c);
-  });
-  const camas = Array.from(camasMap.values());
-  const nActivas = camas.filter((c) => c.estado === 'Activa').length;
-  const nPausa = camas.filter((c) => c.estado === 'En pausa').length;
-  const gCurso = camas.reduce((a, c) => a + c.gramos, 0);
-  const hCurso = camas.reduce((a, c) => a + c.horas, 0);
-  const CAMA_PILL: Record<string, string> = { 'Activa': 'p-ok', 'En pausa': 'p-warn' };
-  const camLista = [...camas].sort((a, b) => b.horas - a.horas).slice(0, 8);
-
-  // Producción
-  const fin = hist.filter((h) => h.resultado === 'Exitoso' || h.resultado === 'Fallido');
-  const exito = fin.length ? `${Math.round((fin.filter((h) => h.resultado === 'Exitoso').length / fin.length) * 100)}%` : '—';
-
-  // Top solicitantes
-  const pp: Record<string, number> = {};
-  sol.forEach((s) => { pp[s.nombre] = (pp[s.nombre] || 0) + 1; });
-  const top = Object.entries(pp).sort((a, b) => b[1] - a[1]).slice(0, 8);
-
-  // Sección 4 — mantenimiento (independiente de filtros: estado de los equipos)
-  const alertasMant = calcularAlertasMantenimiento(datos.impresoras, datos.mantenimientos, datos.generado);
   const nombreImp = (id: string) => datos.impresoras.find((i) => i.id === id)?.nombre || id;
-  const planDe = (id: string): Mantenimiento | null =>
-    datos.mantenimientos.filter((m) => m.impresoraId === id && m.programacion && m.programacion !== 'ninguna')
-      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0] || null;
-  const vistaImp = (imp: Impresora) => {
-    const al = alertasMant.find((a) => a.impresoraId === imp.id);
-    const p = planDe(imp.id);
-    let valor = '—', sub = 'sin mantenimiento programado', ratio = 0;
-    if (p && p.programacion === 'horas' && p.cadaHoras) {
-      // Se cuenta desde el último mantenimiento de cualquier tipo (no solo el programado).
-      const desde = Math.max(0, Math.round((imp.horasAcumuladas - horasAlUltimoMantenimiento(imp.id, datos.mantenimientos)) * 10) / 10);
-      ratio = desde / p.cadaHoras; valor = `${desde} / ${p.cadaHoras} h`; sub = `cada ${p.cadaHoras} h de uso`;
-    } else if (p && p.programacion === 'fecha' && p.proximaFecha) {
-      valor = p.proximaFecha; sub = al ? (al.estado === 'vencido' ? 'vencido' : 'próximo') : 'programado';
-      ratio = al ? (al.estado === 'vencido' ? 1 : 0.9) : 0.5;
-    }
-    return { imp, al, valor, sub, ratio };
-  };
+  const CAMA_PILL: Record<string, string> = { 'Activa': 'p-ok', 'En pausa': 'p-warn' };
   const EST_PILL: Record<string, string> = { 'Operativa': 'p-ok', 'Mantenimiento': 'p-warn', 'Fuera de servicio': 'p-crit' };
-  const impVistas = datos.impresoras.map(vistaImp).sort((a, b) => b.ratio - a.ratio);
-  const oper = datos.impresoras.filter((i) => i.estado === 'Operativa').length;
-  const noDisp = datos.impresoras.length - oper;
-  const req = alertasMant.filter((a) => a.estado === 'vencido').length;
-  const prox = alertasMant.filter((a) => a.estado === 'proximo').length;
-  const rollosBajos = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral).length;
-  const stock = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral * 1.2)
-    .map((f) => ({ ...f, ratio: f.gramos / f.umbral })).sort((a, b) => a.ratio - b.ratio).slice(0, 8);
   const NAT_PILL: Record<string, string> = { 'preventivo': 'p-ok', 'correctivo': 'p-warn' };
 
   const hayFiltros = Object.keys(filtros).length > 0;
@@ -651,13 +701,13 @@ export default function Dashboard() {
 
       {/* 1 · ESTADO ACTUAL */}
       <div className="sec"><div className="sec-h"><h2>1 · Estado actual de la operación</h2><span className="tag tag-live">En vivo</span></div>
-        <p className="sec-p">Lo que necesita atención — la primera lectura al abrir la app.</p></div>
+        <p className="sec-p">Lo que necesita atención — la primera lectura al abrir la app. Refleja el estado presente y no depende de los filtros.</p></div>
 
       <div className="subhdr">Solicitudes de servicio</div>
       <div className="grid k4">
-        <Kpi l="Nuevas sin responder" v={est('Nueva')} s="estado «Nueva»" cls="acc" />
-        <Kpi l="Pendientes vencidas" v={sol.filter((s) => s.vencida).length} s="fecha tentativa ya pasó" cls="crit" />
-        <Kpi l="En revisión" v={est('En Revisión')} s="esperando decisión" cls="warnb" />
+        <Kpi l="Nuevas sin responder" v={estVivo['Nueva']} s="estado «Nueva»" cls="acc" />
+        <Kpi l="Pendientes vencidas" v={vencidas} s="fecha tentativa ya pasó" cls="crit" />
+        <Kpi l="En revisión" v={estVivo['En Revisión']} s="esperando decisión" cls="warnb" />
         <Kpi l="Tasa de aprobación" v={resueltas ? `${Math.round((aprob / resueltas) * 100)}%` : '—'} s={`${aprob} de ${resueltas} resueltas`} />
       </div>
       <div className="grid" style={{ marginTop: 14 }}>
@@ -668,7 +718,7 @@ export default function Dashboard() {
             {['Nueva', 'En Revisión', 'Aprobada', 'Atendida', 'Rechazada'].map((e, i, arr) => (
               <div className="stage" key={e} style={e === 'Rechazada' ? { background: '#fff5f6', borderColor: '#ffdbe0' } : undefined}>
                 <div className="sn" style={{ color: CEST[e] }}>{e}</div>
-                <div className="sv num">{est(e)}</div>
+                <div className="sv num">{estVivo[e]}</div>
                 {i < arr.length - 1 && <span className="arrow">→</span>}
               </div>
             ))}
@@ -693,7 +743,7 @@ export default function Dashboard() {
               <div className="ln"><b>{c.codigo}</b><div className="lsub">{c.impresora === '(sin dato)' ? 'Impresora sin asignar' : c.impresora} · {c.piezas} pieza{c.piezas === 1 ? '' : 's'}{c.materiales.size ? ` · ${Array.from(c.materiales).join(', ')}` : ''}</div></div>
               <span className="lval">{c.gramos ? `${nf(c.gramos)} g` : '—'}{c.horas ? ` · ${Math.round(c.horas * 10) / 10} h` : ''}</span>
             </div>
-          )) : <p className="empty">Sin camas activas o en pausa con estos filtros.</p>}
+          )) : <p className="empty">Sin camas activas o en pausa en este momento.</p>}
         </div>
       </div>
 
@@ -701,15 +751,15 @@ export default function Dashboard() {
       <div className="sec"><div className="sec-h"><h2>2 · Análisis de la demanda</h2></div>
         <p className="sec-p">Volumen en el tiempo, quién solicita y para qué.</p></div>
       <div className="grid c2">
-        <div className="dcard"><div className="chart-h">Solicitudes por mes</div><div className="chart-cap">Tendencia de demanda para anticipar meses pico.</div><Columnas data={porMes(sol)} /></div>
-        <div className="dcard"><div className="chart-h">Por rol del solicitante</div><div className="chart-cap">A quién sirve el aula.</div><Donut data={countBy(sol, 'rol')} /></div>
+        <div className="dcard"><div className="chart-h">Solicitudes por mes</div><div className="chart-cap">Tendencia de demanda para anticipar meses pico.</div><Columnas data={derivado.porMesSol} /></div>
+        <div className="dcard"><div className="chart-h">Por rol del solicitante</div><div className="chart-cap">A quién sirve el aula.</div><Donut data={porRol} /></div>
       </div>
       <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Por motivo de la solicitud</div><div className="chart-cap">Para qué se usa la impresión.</div><Barras data={countBy(sol, 'motivo')} color="#6366f1" /></div>
-        <div className="dcard"><div className="chart-h">Por programa académico</div><div className="chart-cap">Qué carreras concentran la demanda (top 8).</div><Barras data={countBy(sol, 'programa')} color="#5b53e0" /></div>
+        <div className="dcard"><div className="chart-h">Por motivo de la solicitud</div><div className="chart-cap">Para qué se usa la impresión.</div><Barras data={porMotivo} color="#6366f1" /></div>
+        <div className="dcard"><div className="chart-h">Por programa académico</div><div className="chart-cap">Qué carreras concentran la demanda (top 8).</div><Barras data={porPrograma} color="#5b53e0" /></div>
       </div>
       <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Por tipo de servicio</div><div className="chart-cap">Impresión vs. modelado.</div><Donut data={countBy(sol, 'servicio')} /></div>
+        <div className="dcard"><div className="chart-h">Por tipo de servicio</div><div className="chart-cap">Impresión vs. modelado.</div><Donut data={porServicio} /></div>
         <div className="dcard"><div className="chart-h">Top solicitantes recurrentes</div><div className="chart-cap">Quiénes vuelven más — respeta los filtros activos.</div>
           {top.length ? top.map((t, i) => (
             <div className="trow" key={t[0]}><span className="rank">{i + 1}</span><div className="tn">{t[0]}<div className="ts">{t[1]} solicitud{t[1] > 1 ? 'es' : ''}</div></div><span className="tv num">{t[1]}</span></div>
@@ -722,17 +772,17 @@ export default function Dashboard() {
         <p className="sec-p">Cómo se ha venido imprimiendo: resultados, material, tiempo y equipos.</p></div>
       <div className="grid k4">
         <Kpi l="Tasa de éxito" v={exito} s={`${fin.length} finalizadas`} cls="good" />
-        <Kpi l="Material usado" v={`${nf(hist.reduce((a, h) => a + h.gramos, 0))} g`} s="total impreso" />
-        <Kpi l="Horas de impresión" v={`${(Math.round(hist.reduce((a, h) => a + h.horas, 0) * 10) / 10).toLocaleString('es-CO')} h`} s="acumuladas" />
-        <Kpi l="Desperdicio" v={`${nf(hist.reduce((a, h) => a + h.desperdicio, 0))} g`} s="material perdido" />
+        <Kpi l="Material usado" v={`${nf(matUsado)} g`} s="total impreso (finalizadas)" />
+        <Kpi l="Horas de impresión" v={`${(Math.round(horasImpresion * 10) / 10).toLocaleString('es-CO')} h`} s="acumuladas (finalizadas)" />
+        <Kpi l="Desperdicio" v={`${nf(desperdicioTotal)} g`} s="material perdido" />
       </div>
       <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Horas de impresión por impresora</div><div className="chart-cap">Carga de trabajo de cada equipo.</div><Barras data={sumBy(hist, 'impresora', 'horas')} color="#a855f7" fmt={(v) => `${Math.round(v * 10) / 10} h`} /></div>
-        <div className="dcard"><div className="chart-h">Material consumido por tipo</div><div className="chart-cap">Gramos usados por material — insumo para compras.</div><Barras data={sumBy(hist, 'material', 'gramos')} color="#10b981" fmt={(v) => `${nf(v)} g`} /></div>
+        <div className="dcard"><div className="chart-h">Horas de impresión por impresora</div><div className="chart-cap">Carga de trabajo de cada equipo.</div><Barras data={horasPorImpresora} color="#a855f7" fmt={(v) => `${Math.round(v * 10) / 10} h`} /></div>
+        <div className="dcard"><div className="chart-h">Material consumido por tipo</div><div className="chart-cap">Gramos usados por material — insumo para compras.</div><Barras data={materialPorTipo} color="#10b981" fmt={(v) => `${nf(v)} g`} /></div>
       </div>
       <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Resultado de las impresiones</div><div className="chart-cap">Éxitos vs. fallos vs. en curso.</div><Donut data={countBy(hist, 'resultado')} colorMap={{ 'Exitoso': '#10b981', 'Fallido': '#f43f5e', '(en curso)': '#94a3b8' }} /></div>
-        <div className="dcard"><div className="chart-h">Impresiones por mes</div><div className="chart-cap">Volumen de producción en el tiempo.</div><Columnas data={porMes(hist)} /></div>
+        <div className="dcard"><div className="chart-h">Resultado de las impresiones</div><div className="chart-cap">Éxitos vs. fallos vs. en curso.</div><Donut data={porResultado} colorMap={{ 'Exitoso': '#10b981', 'Fallido': '#f43f5e', '(en curso)': '#94a3b8' }} /></div>
+        <div className="dcard"><div className="chart-h">Impresiones por mes</div><div className="chart-cap">Volumen de producción en el tiempo.</div><Columnas data={derivado.porMesHist} /></div>
       </div>
 
       {/* 4 · MANTENIMIENTO */}

@@ -94,6 +94,25 @@ async function anexarFilas(spreadsheetId: string, range: string, values: (string
   invalidarCacheLecturas();
 }
 
+/** Escribe VARIOS rangos del mismo spreadsheet en UNA sola petición
+ *  (values.batchUpdate). Evita el patrón N+1 de escribir fila por fila en un
+ *  bucle: una cama de N piezas se finaliza/pausa con 1 llamada en vez de N.
+ *  Sanea cada celda e invalida la caché una sola vez. */
+async function escribirVariosRangos(
+  spreadsheetId: string,
+  data: { range: string; values: (string | number)[][] }[],
+): Promise<void> {
+  if (data.length === 0) return;
+  await cliente().spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: 'USER_ENTERED',
+      data: data.map((d) => ({ range: d.range, values: sanear(d.values) })),
+    },
+  });
+  invalidarCacheLecturas();
+}
+
 /** batchUpdate + invalida la caché de lecturas (altas/bajas de filas, crear pestañas). */
 async function batchUpdateCliente(spreadsheetId: string, requests: sheets_v4.Schema$Request[]): Promise<void> {
   await cliente().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
@@ -372,9 +391,11 @@ export async function actualizarEstadoProyecto(codigo: string, estado: EstadoPro
   const registros = await getHistorial();
   const filas = registros.filter((r) => r.codigo === codigo);
   if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
-  for (const r of filas) {
-    await escribirRango(config.sheetHistorialId, `'${config.tabHistorial}'!P${r.fila}`, [[estado]]);
-  }
+  // Todas las filas de la cama en UNA sola petición (antes: una escritura por fila).
+  await escribirVariosRangos(
+    config.sheetHistorialId,
+    filas.map((r) => ({ range: `'${config.tabHistorial}'!P${r.fila}`, values: [[estado]] })),
+  );
 }
 
 /** sheetId (gid) de la pestaña de Historial (para borrar filas) */
@@ -448,16 +469,19 @@ export async function finalizarProyectoEnHistorial(
   const registros = await getHistorial();
   const filas = registros.filter((r) => r.codigo === codigo);
   if (filas.length === 0) throw new Error(`Cama ${codigo} no encontrada`);
-  for (const r of filas) {
-    // Cada pieza guarda SU desperdicio (columna R): entrado por pieza o el reparto
-    // equitativo del total; así el histórico queda por-pieza y no se sub/sobre-cuenta.
-    const d = desperdicios[r.marcaTemporal] ?? '';
-    await escribirRango(
-      config.sheetHistorialId,
-      `'${config.tabHistorial}'!P${r.fila}:S${r.fila}`,
-      [['Finalizada', resultado, d === '' ? '' : d, comentarios]],
-    );
-  }
+  // Cada pieza guarda SU desperdicio (columna R): entrado por pieza o el reparto
+  // equitativo del total; así el histórico queda por-pieza y no se sub/sobre-cuenta.
+  // Todas las filas se escriben en UNA sola petición (antes: una escritura por fila).
+  await escribirVariosRangos(
+    config.sheetHistorialId,
+    filas.map((r) => {
+      const d = desperdicios[r.marcaTemporal] ?? '';
+      return {
+        range: `'${config.tabHistorial}'!P${r.fila}:S${r.fila}`,
+        values: [['Finalizada', resultado, d === '' ? '' : d, comentarios]] as (string | number)[][],
+      };
+    }),
+  );
   return filas;
 }
 
@@ -514,6 +538,17 @@ async function inicializarInventario(): Promise<void> {
     ]);
   }
   G.__invInit = true;
+}
+
+/** Pre-carga en UNA sola petición (batchGet) los 4 rangos del inventario que
+ *  consume el dashboard. Los rangos son EXACTAMENTE los mismos que leen
+ *  getFilamentos/getUmbrales/getImpresoras/getMantenimientos, así que esas
+ *  lecturas posteriores salen de la caché: 4 peticiones → 1. */
+export async function precargarInventario(): Promise<void> {
+  await asegurarInventario();
+  await leerVariosRangos(config.sheetInventarioId, [
+    `'Filamentos'!A2:J`, `'Umbrales'!A2:D`, `'Impresoras'!A2:F`, `'Mantenimiento'!A2:K`,
+  ]);
 }
 
 export async function getFilamentos(): Promise<Filamento[]> {

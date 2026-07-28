@@ -518,6 +518,9 @@ function umbralDeFilamento(f: Filamento, umbrales: UmbralAlerta[]): number {
  *  con la forma que consume el Dashboard interactivo; el filtrado se hace en el cliente. */
 export async function getDatosDashboard(): Promise<DatosDashboard> {
   const b = backend();
+  // Los 4 rangos del inventario van al MISMO spreadsheet: se precargan con un solo
+  // batchGet y los getters de abajo salen de la caché (6 lecturas → 3 en frío).
+  await b.precargarInventario();
   const [solicitudes, historial, filamentos, umbrales, impresoras, mantenimientos] = await Promise.all([
     b.getSolicitudes(), b.getHistorial(), b.getFilamentos(), b.getUmbrales(), b.getImpresoras(), b.getMantenimientos(),
   ]);

@@ -38,10 +38,44 @@ export function parsearHoras(texto: string | number | null | undefined): number 
   return isNaN(n) ? 0 : n;
 }
 
+/**
+ * Convierte a número un valor que puede venir con formato (las hojas se leen con
+ * FORMATTED_VALUE, o sea el texto TAL COMO SE MUESTRA). Reconoce el formato colombiano
+ * ("." de miles, "," decimal) y también el anglosajón, sin romper los números "crudos":
+ *   "45.000" → 45000   ·   "1.234,56" → 1234.56   ·   "1.029.804" → 1029804
+ *   "267,18" → 267.18  ·   "3.73" → 3.73          ·   "-160" → -160
+ * Regla: si hay AMBOS separadores, el de más a la derecha es el decimal. Si hay UNO solo,
+ * es decimal solo cuando aparece una vez y NO va seguido de exactamente 3 dígitos (así
+ * "3,73"/"3.5" son decimales, pero "45.000"/"1,234" son separadores de miles → enteros).
+ */
 export function num(v: string | number | null | undefined): number {
   if (v === null || v === undefined || v === '') return 0;
-  if (typeof v === 'number') return v;
-  const n = parseFloat(String(v).replace(',', '.'));
+  if (typeof v === 'number') return isNaN(v) ? 0 : v;
+
+  // Deja solo dígitos, separadores y signo (quita símbolos de moneda, espacios, %, etc.).
+  const s = String(v).trim().replace(/[^\d.,+-]/g, '');
+  if (!s || s === '-' || s === '+') return 0;
+
+  const puntos = s.split('.').length - 1;
+  const comas = s.split(',').length - 1;
+
+  let idxDecimal = -1;
+  if (puntos > 0 && comas > 0) {
+    // Ambos separadores presentes: el más a la derecha es el decimal.
+    idxDecimal = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  } else if (puntos + comas > 0) {
+    // Un solo tipo de separador: decimal solo si aparece una vez y no lo siguen 3 dígitos.
+    const idx = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+    const veces = puntos > 0 ? puntos : comas;
+    const digitosDespues = s.length - idx - 1;
+    if (veces === 1 && digitosDespues !== 3) idxDecimal = idx;
+  }
+
+  const normal = idxDecimal === -1
+    ? s.replace(/[.,]/g, '') // todos los separadores son de miles → entero
+    : `${s.slice(0, idxDecimal).replace(/[.,]/g, '')}.${s.slice(idxDecimal + 1).replace(/[.,]/g, '')}`;
+
+  const n = parseFloat(normal);
   return isNaN(n) ? 0 : n;
 }
 

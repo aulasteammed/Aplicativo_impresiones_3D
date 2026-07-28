@@ -82,6 +82,14 @@
       <li><span class="chip ok">Mitigado</span> <span class="id">S-03 · S-04</span> Relay de correo y borrados sin auth: quedan protegidos tras la clave de acceso (S-01).</li>
       <li><span class="chip ok">Resuelto</span> <span class="id">D-01</span> Los KPIs de camas ahora <b>agrupan por código</b> (cuentan camas, no piezas).</li>
       <li><span class="chip ok">Cambiado</span> <span class="id">D-02</span> El desperdicio ahora se guarda <b>por pieza</b> (o el total repartido equitativamente entre las piezas) y el tablero lo <b>suma</b>.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">S-06 · S-07</span> DoS: <b>rate-limit por IP</b> en <code>/api/*</code> (más estricto en exportar y OCR) y <b>rechazo de "bombas de descompresión"</b> en el OCR (se validan las dimensiones desde la cabecera antes de decodificar).</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">B-01</span> <code>num()</code> ahora entiende el formato colombiano/anglosajón: <code>"45.000"</code>→45000 y <code>"1.234,56"</code>→1234.56 (antes daban 45 y 1.234), sin romper los números crudos ni los decimales.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">B-02</span> Elegir "Ninguno" en un filtro ahora resalta el chip con contador <b>0</b>: se ve qué causa el tablero vacío.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">B-03</span> La sección 1 ("Estado actual · En vivo") ahora se calcula con datos <b>sin filtrar</b> (como la sección 4): una cama imprimiendo hoy ya no desaparece al filtrar por otro mes.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">B-04</span> Los KPIs "Material usado" y "Horas de impresión" suman <b>solo finalizadas</b> (lo en curso vive en la sección 1); la etiqueta lo aclara.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">E-01</span> Los 4 rangos del inventario del dashboard se leen con <b>un solo batchGet</b> (6 lecturas → 3 en frío).</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">E-02</span> Finalizar/pausar una cama escribe todas sus filas en <b>una sola petición</b> (<code>values.batchUpdate</code>) en vez de una por fila.</li>
+      <li><span class="chip ok">Resuelto</span> <span class="id">E-03</span> Toda la agregación del dashboard quedó memoizada (<code>useMemo</code> con clave datos+filtros): abrir un popover ya no recalcula el tablero.</li>
     </ul>
     <p style="margin:6px 0;color:var(--muted);font-size:13.5px">El resto de hallazgos (medios/bajos, eficiencia y código sin usar) siguen pendientes de revisión.</p>
   </div>

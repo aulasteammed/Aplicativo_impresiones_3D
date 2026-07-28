@@ -18,6 +18,95 @@ import { createWorker, PSM } from 'tesseract.js';
 import Jimp from 'jimp';
 import { AnalisisSlicerResultado } from './types';
 
+// --- Protección contra "bombas de descompresión" ------------------------------------
+// Un archivo pequeño puede decodificar a una imagen enorme (cientos de millones de
+// píxeles) y hacer que el decodificador reserve gigas de memoria. Antes de tocar Jimp,
+// se leen ancho×alto desde la CABECERA (sin decodificar todo) y se rechaza lo que exceda
+// el presupuesto. Ninguna captura real del slicer se acerca a estos topes.
+const MAX_MEGAPIXELES = 40;
+const MAX_PIXELES = MAX_MEGAPIXELES * 1_000_000;
+const MAX_LADO = 20000; // ningún lado de una captura real supera esto
+// Tope de píxeles TRAS el escalado del preprocesado, para acotar la memoria aun si una
+// imagen grande (pero válida) pasó el filtro de entrada.
+const MAX_PIXELES_SALIDA = 48 * 1_000_000;
+
+/** Lee ancho×alto desde la cabecera de la imagen SIN decodificarla entera. Cubre los
+ *  formatos que acepta la ruta (PNG, JPEG, GIF, BMP, WebP). Devuelve null si no puede. */
+export function medirImagen(buf: Buffer): { ancho: number; alto: number } | null {
+  if (buf.length < 24) return null;
+
+  // PNG: firma 89 50 4E 47; el chunk IHDR trae ancho/alto (big-endian) en 16 y 20.
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return { ancho: buf.readUInt32BE(16), alto: buf.readUInt32BE(20) };
+  }
+  // GIF: "GIF"; ancho/alto (little-endian) en 6 y 8.
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    return { ancho: buf.readUInt16LE(6), alto: buf.readUInt16LE(8) };
+  }
+  // BMP: "BM"; ancho/alto (little-endian, con signo) en 18 y 22.
+  if (buf[0] === 0x42 && buf[1] === 0x4d) {
+    return { ancho: Math.abs(buf.readInt32LE(18)), alto: Math.abs(buf.readInt32LE(22)) };
+  }
+  // WebP: "RIFF"...."WEBP" + sub-formato (VP8 / VP8L / VP8X).
+  if (
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) {
+    const cc = buf.toString('ascii', 12, 16);
+    if (cc === 'VP8 ') {
+      return { ancho: buf.readUInt16LE(26) & 0x3fff, alto: buf.readUInt16LE(28) & 0x3fff };
+    }
+    if (cc === 'VP8L') {
+      const b0 = buf[21], b1 = buf[22], b2 = buf[23], b3 = buf[24];
+      return {
+        ancho: 1 + (((b1 & 0x3f) << 8) | b0),
+        alto: 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)),
+      };
+    }
+    if (cc === 'VP8X') {
+      return {
+        ancho: 1 + (buf[24] | (buf[25] << 8) | (buf[26] << 16)),
+        alto: 1 + (buf[27] | (buf[28] << 8) | (buf[29] << 16)),
+      };
+    }
+    return null;
+  }
+  // JPEG: FF D8; se recorren los marcadores hasta el SOF (que trae alto/ancho, big-endian).
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    let off = 2;
+    while (off + 1 < buf.length) {
+      if (buf[off] !== 0xff) { off++; continue; }
+      const m = buf[off + 1];
+      if (m === 0xff) { off++; continue; }                                  // byte de relleno
+      if (m === 0x00 || m === 0x01 || (m >= 0xd0 && m <= 0xd9)) { off += 2; continue; } // sin longitud
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) { // SOF
+        if (off + 9 >= buf.length) return null;
+        return { alto: buf.readUInt16BE(off + 5), ancho: buf.readUInt16BE(off + 7) };
+      }
+      if (off + 4 >= buf.length) return null;
+      off += 2 + buf.readUInt16BE(off + 2);                                  // saltar el segmento
+    }
+    return null;
+  }
+  return null;
+}
+
+/** ¿Las dimensiones existen y caben en el presupuesto de píxeles? (fail-closed: si no se
+ *  pudieron leer, se considera insegura y se rechaza). */
+function dimensionSegura(d: { ancho: number; alto: number } | null): boolean {
+  return !!d && d.ancho > 0 && d.alto > 0 && d.ancho <= MAX_LADO && d.alto <= MAX_LADO
+    && d.ancho * d.alto <= MAX_PIXELES;
+}
+
+/** Factor de escala que no exceda el presupuesto de píxeles de salida. Nunca baja de 1:
+ *  las capturas normales se escalan igual que siempre; solo evita que una imagen enorme
+ *  se agrande y agote la memoria. */
+function factorSeguro(img: Jimp, deseado: number): number {
+  const px = img.bitmap.width * img.bitmap.height;
+  const tope = Math.sqrt(MAX_PIXELES_SALIDA / Math.max(1, px));
+  return Math.max(1, Math.min(deseado, tope));
+}
+
 // Materiales conocidos. Los compuestos van primero para que, por ejemplo,
 // "PLA-CF" se reconozca antes que "PLA".
 const MATERIALES_CONOCIDOS = [
@@ -204,7 +293,7 @@ function invertirSiOscuro(img: Jimp): void {
 async function preprocesarSuave(buffer: Buffer): Promise<Buffer> {
   try {
     const img = await Jimp.read(buffer);
-    img.scale(2).greyscale();
+    img.scale(factorSeguro(img, 2)).greyscale();
     invertirSiOscuro(img);
     img.contrast(0.3).normalize();
     return await img.getBufferAsync(Jimp.MIME_PNG);
@@ -219,7 +308,7 @@ async function preprocesarFuerte(buffer: Buffer): Promise<Buffer> {
   try {
     const img = await Jimp.read(buffer);
     const factor = Math.min(4, Math.max(2, Math.ceil(2000 / img.bitmap.width)));
-    img.scale(factor).greyscale();
+    img.scale(factorSeguro(img, factor)).greyscale();
     invertirSiOscuro(img);
     img.normalize().contrast(0.5);
     return await img.getBufferAsync(Jimp.MIME_PNG);
@@ -265,6 +354,16 @@ export async function analizarCapturas(
     const resultados: AnalisisSlicerResultado[] = [];
     for (const a of archivos) {
       try {
+        // Rechaza "bombas de descompresión" ANTES de que Jimp decodifique la imagen.
+        if (!dimensionSegura(medirImagen(a.buffer))) {
+          resultados.push({
+            archivo: a.nombre,
+            pesoGramos: null, tiempoHoras: null, tiempoTexto: null, material: null,
+            camposNoIdentificados: ['peso_gramos', 'tiempo', 'material'],
+            notas: `Imagen no válida o demasiado grande para procesar (máx. ${MAX_MEGAPIXELES} MP). Suba una captura normal del slicer.`,
+          });
+          continue;
+        }
         const imgSuave = await preprocesarSuave(a.buffer);
         const imgFuerte = await preprocesarFuerte(a.buffer);
 
