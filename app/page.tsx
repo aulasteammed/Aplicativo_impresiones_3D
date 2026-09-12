@@ -2,512 +2,31 @@
 
 // Ventana 1 — Dashboard interactivo: filtra por mes/rol/programa/motivo/servicio
 // y todo el tablero se recalcula. Datos en vivo de /api/dashboard/datos.
+// Cada sección numerada vive en components/dashboard/Seccion*.tsx; este archivo
+// trae los datos, mantiene el estado de filtros y calcula las agregaciones
+// compartidas entre secciones (ver `derivado`).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Aviso, BotonRecargar, Modal, useDatos } from '@/components/ui';
-import { canonCategoria, formatCOP, calcularAlertasMantenimiento, horasAlUltimoMantenimiento, normalizarTexto } from '@/lib/util';
+import { useMemo, useState } from 'react';
+import { Aviso, BotonRecargar, useDatos } from '@/components/ui';
+import { canonCategoria, calcularAlertasMantenimiento, horasAlUltimoMantenimiento } from '@/lib/util';
 import { DatosDashboard, Impresora, Mantenimiento } from '@/lib/types';
-
-const PAL = ['#6366f1', '#a855f7', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e', '#14b8a6', '#eab308'];
-const CEST: Record<string, string> = { 'Nueva': '#3b82f6', 'En Revisión': '#f59e0b', 'Aprobada': '#10b981', 'Rechazada': '#f43f5e', 'Atendida': '#94a3b8' };
-const MESES: Record<string, string> = { '01': 'ene', '02': 'feb', '03': 'mar', '04': 'abr', '05': 'may', '06': 'jun', '07': 'jul', '08': 'ago', '09': 'sep', '10': 'oct', '11': 'nov', '12': 'dic' };
-const MESES_LARGO: Record<string, string> = { '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril', '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto', '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre' };
-const DIMS: [string, string][] = [['mes', 'Mes'], ['rol', 'Rol'], ['programa', 'Programa'], ['motivo', 'Motivo'], ['servicio', 'Servicio']];
-
-const nf = (n: number) => Math.round(n).toLocaleString('es-CO');
-// Mes agrupado por YYYY-MM (todo el mes). La etiqueta usa el nombre del mes y el
-// año de 4 dígitos para que no se confunda con un día (ej. "Febrero 2026").
-const mesLbl = (m: string) => { const [y, mo] = m.split('-'); return `${MESES_LARGO[mo] || mo} ${y || ''}`.trim(); };
-const mesCorto = (m: string) => { const [y, mo] = m.split('-'); return { m: MESES[mo] || mo, y: y || '' }; };
-
-type Fila = Record<string, any>;
-const countBy = (arr: Fila[], k: string) => {
-  const m: Record<string, number> = {};
-  arr.forEach((r) => { const v = canonCategoria(k, r[k]); if (v == null) return; m[v] = (m[v] || 0) + 1; });
-  return Object.entries(m).map(([l, v]) => ({ l, v }));
-};
-const sumBy = (arr: Fila[], k: string, f: string) => {
-  const m: Record<string, number> = {};
-  arr.forEach((r) => { const g = canonCategoria(k, r[k]); if (g == null) return; m[g] = (m[g] || 0) + (+r[f] || 0); });
-  return Object.entries(m).map(([l, v]) => ({ l, v }));
-};
-const uniqDim = (datos: DatosDashboard, k: string) => {
-  const m = new Map<string, string>();
-  const add = (raw: any) => { const c = canonCategoria(k, raw); if (c != null) m.set(normalizarTexto(c), c); };
-  datos.solicitudes.forEach((r) => add((r as Fila)[k]));
-  datos.historial.forEach((r) => add((r as Fila)[k]));
-  const a = Array.from(m.values());
-  if (k === 'mes') return a.sort();
-  // "No aplica" y "Otros" siempre al final; el resto alfabético (locale español).
-  const alFinal = (v: string) => (v === 'Otros' ? 2 : v === 'No aplica' ? 1 : 0);
-  return a.sort((x, y) => alFinal(x) - alFinal(y) || x.localeCompare(y, 'es'));
-};
-
-// ---------------------------------------------------------------------------
-// Piezas visuales
-// ---------------------------------------------------------------------------
-type Punto = { l: string; v: number };
-
-function Kpi({ l, v, s, cls }: { l: string; v: string | number; s?: string; cls?: string }) {
-  return (
-    <div className={`dcard kpi ${cls || ''}`}>
-      <div className="kl">{l}</div>
-      <div className="kv num">{v}</div>
-      {s && <div className="ks">{s}</div>}
-    </div>
-  );
-}
-
-function Barras({ data, color, fmt, wide }: { data: Punto[]; color?: string; fmt?: (v: number) => string; wide?: boolean }) {
-  const top = [...data].sort((a, b) => b.v - a.v).slice(0, 8);
-  const max = Math.max(1, ...top.map((d) => d.v));
-  if (!top.length) return <p className="empty">Sin datos.</p>;
-  return (
-    <div className="bars">
-      {top.map((d, i) => (
-        <div className="bar-row" key={d.l} style={wide ? { gridTemplateColumns: '120px 1fr 92px' } : undefined}>
-          <div className="bl" title={d.l}>{d.l}</div>
-          <div className="bar-track"><div className="bar-fill" style={{ width: `${(d.v / max) * 100}%`, background: color || PAL[i % PAL.length] }} /></div>
-          <div className="bv num">{fmt ? fmt(d.v) : d.v}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Columnas({ data, fmt }: { data: { m: string; y: string; v: number }[]; fmt?: (v: number) => string }) {
-  if (!data.length) return <p className="empty">Sin datos.</p>;
-  const max = Math.max(1, ...data.map((d) => d.v));
-  return (
-    <div className="cols">
-      {data.map((d) => (
-        <div className="col" key={d.m + d.y}>
-          <div className="cplot"><div className="cval num">{fmt ? fmt(d.v) : d.v}</div><div className="cbar" style={{ height: `${Math.max(3, Math.round((d.v / max) * 112))}px` }} /></div>
-          <div className="cl">{d.m}<span className="cy">{d.y}</span></div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Donut({ data, colorMap, fmt, centro }: { data: Punto[]; colorMap?: Record<string, string>; fmt?: (v: number) => string; centro?: string }) {
-  const d = data.filter((x) => x.v > 0);
-  const total = d.reduce((a, x) => a + x.v, 0);
-  const r = 52, circ = 2 * Math.PI * r;
-  let off = 0;
-  const segs = d.map((x, i) => { const len = total ? (x.v / total) * circ : 0; const s = { len, col: (colorMap && colorMap[x.l]) || PAL[i % PAL.length], off }; off += len; return s; });
-  return (
-    <div className="donut-wrap">
-      <svg width="128" height="128" viewBox="0 0 128 128">
-        {!total && <circle cx="64" cy="64" r="52" fill="none" stroke="#eef0f7" strokeWidth="20" />}
-        {segs.map((s, i) => (
-          <circle key={i} cx="64" cy="64" r="52" fill="none" stroke={s.col} strokeWidth="20" strokeDasharray={`${s.len} ${circ - s.len}`} strokeDashoffset={-s.off} transform="rotate(-90 64 64)" />
-        ))}
-        <text x="64" y="60" textAnchor="middle" fontSize={centro ? 13 : 22} fontWeight="800" fill="#1f2440">{centro ?? total}</text>
-        <text x="64" y="76" textAnchor="middle" fontSize="10" fill="#9aa1b2">total</text>
-      </svg>
-      <div className="dlegend">
-        {d.length ? d.map((x, i) => (
-          <div className="dr" key={x.l}>
-            <span className="dn"><i className="dot" style={{ background: (colorMap && colorMap[x.l]) || PAL[i % PAL.length] }} />{x.l}</span>
-            <span className="dv num">{fmt ? fmt(x.v) : x.v}</span>
-          </div>
-        )) : <span className="empty">Sin datos.</span>}
-      </div>
-    </div>
-  );
-}
-
-function FiltroMulti({ dim, label, opciones, sel, abierto, onAbrir, onSet }: {
-  dim: string; label: string; opciones: string[];
-  sel: Set<string> | undefined; abierto: boolean;
-  onAbrir: () => void; onSet: (next: Set<string> | null) => void;
-}) {
-  // Un conjunto VACÍO ("Ninguno") también es un filtro activo (oculta todo lo de esa
-  // categoría): el chip se resalta con contador 0 para que se vea qué causa el vacío.
-  const activo = !!sel;
-  const toggle = (v: string) => {
-    const base = sel ? new Set(sel) : new Set(opciones);
-    base.has(v) ? base.delete(v) : base.add(v);
-    onSet(base.size === opciones.length ? null : base);
-  };
-  return (
-    <div className="md">
-      <button className={`md-btn ${activo ? 'act' : ''}`} onClick={onAbrir}>
-        {label}{activo ? <span className="cnt">{sel!.size}</span> : <span style={{ opacity: .5 }}>▾</span>}
-      </button>
-      {abierto && (
-        <div className="md-pop">
-          <div className="md-mini">
-            <button onClick={() => onSet(null)}>Todos</button>
-            <button onClick={() => onSet(new Set())}>Ninguno</button>
-          </div>
-          {opciones.map((v) => (
-            <label className="md-opt" key={v}>
-              <input type="checkbox" checked={sel ? sel.has(v) : true} onChange={() => toggle(v)} />
-              <span>{dim === 'mes' ? mesLbl(v) : v}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Filtro de "Mes" jerárquico: primero el AÑO (lista corta que no crece con los
-// meses) y, al abrir un año, sus MESES. Produce el mismo conjunto de valores
-// "YYYY-MM" que el filtro plano, así el resto del tablero no cambia.
-function FiltroMes({ opciones, sel, abierto, onAbrir, onSet }: {
-  opciones: string[]; sel: Set<string> | undefined; abierto: boolean;
-  onAbrir: () => void; onSet: (next: Set<string> | null) => void;
-}) {
-  const [expandido, setExpandido] = useState<string | null>(null);
-  // Igual que en FiltroMulti: el conjunto vacío ("Ninguno") cuenta como filtro activo.
-  const activo = !!sel;
-  const porAnio = useMemo(() => {
-    const m: Record<string, string[]> = {};
-    [...opciones].sort().forEach((ym) => { const a = ym.slice(0, 4); (m[a] ??= []).push(ym); });
-    return m;
-  }, [opciones]);
-  const anios = Object.keys(porAnio).sort();
-  // Año abierto por defecto = el más reciente; '' = ninguno abierto.
-  const anioAbierto = expandido === '' ? null : (expandido || anios[anios.length - 1] || null);
-
-  const marcado = (ym: string) => (sel ? sel.has(ym) : true);
-  const emitir = (base: Set<string>) => onSet(base.size === opciones.length ? null : base);
-  const toggle = (ym: string) => {
-    const base = sel ? new Set(sel) : new Set(opciones);
-    base.has(ym) ? base.delete(ym) : base.add(ym);
-    emitir(base);
-  };
-  const toggleAnio = (a: string) => {
-    const base = sel ? new Set(sel) : new Set(opciones);
-    const todos = porAnio[a].every((ym) => base.has(ym));
-    porAnio[a].forEach((ym) => (todos ? base.delete(ym) : base.add(ym)));
-    emitir(base);
-  };
-  const nSel = (a: string) => porAnio[a].filter(marcado).length;
-
-  return (
-    <div className="md">
-      <button className={`md-btn ${activo ? 'act' : ''}`} onClick={onAbrir}>
-        Mes{activo ? <span className="cnt">{sel!.size}</span> : <span style={{ opacity: .5 }}>▾</span>}
-      </button>
-      {abierto && (
-        <div className="md-pop">
-          <div className="md-mini">
-            <button onClick={() => onSet(null)}>Todos</button>
-            <button onClick={() => onSet(new Set())}>Ninguno</button>
-          </div>
-          {anios.length === 0 && <div className="md-opt" style={{ color: '#9aa1b2' }}>Sin datos</div>}
-          {anios.map((a) => {
-            const sc = nSel(a), total = porAnio[a].length, exp = anioAbierto === a;
-            return (
-              <div key={a}>
-                <div className="md-opt" style={{ fontWeight: 700, color: '#3c435a' }}>
-                  <input type="checkbox"
-                    checked={total > 0 && sc === total}
-                    ref={(el) => { if (el) el.indeterminate = sc > 0 && sc < total; }}
-                    onChange={() => toggleAnio(a)} />
-                  <span style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandido(exp ? '' : a)}>
-                    {a}{sc > 0 && sc < total ? ` · ${sc}` : ''}
-                  </span>
-                  <span style={{ color: '#9aa1b2', cursor: 'pointer', width: 14, textAlign: 'center' }}
-                    onClick={() => setExpandido(exp ? '' : a)}>{exp ? '▾' : '▸'}</span>
-                </div>
-                {exp && porAnio[a].map((ym) => (
-                  <label className="md-opt" key={ym} style={{ paddingLeft: 24 }}>
-                    <input type="checkbox" checked={marcado(ym)} onChange={() => toggle(ym)} />
-                    <span>{MESES_LARGO[ym.slice(5, 7)] || ym}</span>
-                  </label>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Modal de exportación: el usuario elige qué conjuntos de datos incluir y se
-// descarga un .xlsx (una hoja por conjunto) generado por /api/exportar.
-const OPCIONES_EXPORT: [string, string, string][] = [
-  ['solicitudes', 'Solicitudes', 'Todas las solicitudes del formulario'],
-  ['camas', 'Camas de impresión', 'Camas activas y en pausa (una fila por pieza)'],
-  ['historial', 'Historial', 'Impresiones finalizadas'],
-  ['filamentos', 'Inventario · Filamentos', 'Rollos de filamento del inventario'],
-  ['mantenimiento', 'Inventario · Mantenimiento', 'Registros y programación de mantenimiento'],
-];
-
-function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
-  const [sel, setSel] = useState<Record<string, boolean>>({ solicitudes: true, camas: true, historial: true, filamentos: true, mantenimiento: true });
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
-  const [generando, setGenerando] = useState(false);
-  const [error, setError] = useState('');
-  const alguno = Object.values(sel).some(Boolean);
-  const rangoInvalido = !!desde && !!hasta && desde > hasta;
-  // El calendario nativo muestra la fecha según el idioma del navegador; mostramos
-  // además la fecha elegida en formato DD/MM/AAAA para que siempre quede claro.
-  const ddmmaaaa = (iso: string) => { const p = iso.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; };
-  const toggle = (k: string) => setSel((p) => ({ ...p, [k]: !p[k] }));
-  const todos = (v: boolean) => setSel({ solicitudes: v, camas: v, historial: v, filamentos: v, mantenimiento: v });
-
-  async function descargar() {
-    setGenerando(true);
-    setError('');
-    try {
-      const res = await fetch('/api/exportar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...sel, desde, hasta }),
-      });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || `No se pudo generar el archivo (error ${res.status})`);
-      }
-      const blob = await res.blob();
-      const nombre = res.headers.get('Content-Disposition')?.match(/filename="?([^"]+)"?/)?.[1] || 'Aula-STEAM-datos.xlsx';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombre;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      onCerrar();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setGenerando(false);
-    }
-  }
-
-  return (
-    <Modal abierto onCerrar={onCerrar} titulo="Exportar datos a Excel" ancho="max-w-lg" centrado>
-      <div className="space-y-5">
-        {error && <Aviso tipo="error">{error}</Aviso>}
-        <div className="flex gap-4">
-          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">📊</div>
-          <div className="min-w-0 flex-1 text-sm text-slate-600">
-            <p>Elige qué información incluir. Se genera un archivo <b>.xlsx</b> con una hoja por cada conjunto seleccionado.</p>
-            <div className="mt-3 flex gap-3 text-xs">
-              <button type="button" className="text-steam-700 hover:underline" onClick={() => todos(true)}>Seleccionar todo</button>
-              <span className="text-slate-300">·</span>
-              <button type="button" className="text-steam-700 hover:underline" onClick={() => todos(false)}>Ninguno</button>
-            </div>
-            <div className="mt-2 space-y-1.5">
-              {OPCIONES_EXPORT.map(([k, l, d]) => (
-                <label key={k} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50">
-                  <input type="checkbox" className="mt-0.5 h-4 w-4 flex-none accent-steam-600" checked={!!sel[k]} onChange={() => toggle(k)} />
-                  <span>
-                    <span className="font-medium text-slate-700">{l}</span>
-                    <br />
-                    <span className="text-xs text-slate-400">{d}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            {/* Rango de fechas (opcional) */}
-            <div className="mt-4 rounded-lg border border-slate-200 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Periodo (opcional)</span>
-                {(desde || hasta) && (
-                  <button type="button" className="text-xs text-steam-700 hover:underline" onClick={() => { setDesde(''); setHasta(''); }}>Limpiar</button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="text-xs text-slate-400">Desde (DD/MM/AAAA)</span>
-                  <input type="date" lang="es-CO" className="input mt-0.5" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
-                  {desde && <span className="mt-0.5 block text-[11px] font-medium text-slate-500">{ddmmaaaa(desde)}</span>}
-                </label>
-                <label className="block">
-                  <span className="text-xs text-slate-400">Hasta (DD/MM/AAAA)</span>
-                  <input type="date" lang="es-CO" className="input mt-0.5" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
-                  {hasta && <span className="mt-0.5 block text-[11px] font-medium text-slate-500">{ddmmaaaa(hasta)}</span>}
-                </label>
-              </div>
-              {rangoInvalido ? (
-                <p className="mt-1.5 text-xs text-rose-600">La fecha inicial no puede ser posterior a la final.</p>
-              ) : (
-                <p className="mt-1.5 text-xs text-slate-400">Vacío = sin límite. Filtra por fecha de solicitud, creación de la cama, finalización, y registro de filamento o mantenimiento.</p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onCerrar} disabled={generando}>Cancelar</button>
-          <button className="btn-primary" onClick={descargar} disabled={generando || !alguno || rangoInvalido}>
-            {generando ? 'Generando…' : '⬇ Descargar .xlsx'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// Sección 5 · Costos de mantenimiento — con su propia barra de filtros (Año,
-// Impresora, Tipo, Responsable) que recalcula KPIs y gráficos en el cliente.
-type RegMant = { ano: string; impresora: string; naturaleza: string; categoria: string; responsable: string; desc: string; fecha: string; costo: number };
-const DIMS_MANT: [string, string][] = [['ano', 'Año'], ['impresora', 'Impresora'], ['naturaleza', 'Naturaleza'], ['categoria', 'Categoría'], ['responsable', 'Responsable']];
-const NAT_ORDEN = ['Preventivo', 'Correctivo'];
-const NAT_COL: Record<string, string> = { 'Preventivo': '#6366f1', 'Correctivo': '#f43f5e' };
-const CAT_ORDEN = ['Consumible', 'Repuesto', 'Servicio', 'Sin gasto'];
-const CAT_COL: Record<string, string> = { 'Consumible': '#a855f7', 'Repuesto': '#f59e0b', 'Servicio': '#14b8a6', 'Sin gasto': '#94a3b8' };
-const capMant = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const copCorto = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`);
-const kCop = (n: number) => `$${Math.round(n / 1000)}k`;
-const valDimMant = (r: RegMant, d: string) => (d === 'ano' ? r.ano : d === 'impresora' ? r.impresora : d === 'naturaleza' ? r.naturaleza : d === 'categoria' ? r.categoria : r.responsable);
-
-function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { mantenimientos: Mantenimiento[]; impresoras: Impresora[] }) {
-  const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
-  const [abierto, setAbierto] = useState<string | null>(null);
-  const barraRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const alClic = (e: MouseEvent) => { if (barraRef.current && !barraRef.current.contains(e.target as Node)) setAbierto(null); };
-    document.addEventListener('mousedown', alClic);
-    return () => document.removeEventListener('mousedown', alClic);
-  }, []);
-
-  const nombreImp = (id: string) => impresoras.find((i) => i.id === id)?.nombre || id || '(sin impresora)';
-
-  const registros: RegMant[] = useMemo(() => mantenimientos.map((m) => ({
-    ano: String(m.fecha || '').slice(0, 4) || '(sin fecha)',
-    impresora: nombreImp(m.impresoraId),
-    naturaleza: capMant(m.naturaleza || '(sin naturaleza)'),
-    categoria: m.categoria ? capMant(m.categoria) : 'Sin gasto',
-    responsable: m.responsable || '(sin responsable)',
-    desc: m.descripcion || 'Mantenimiento',
-    fecha: m.fecha || '',
-    costo: Number(m.costo) || 0,
-  })), [mantenimientos, impresoras]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const opciones = useMemo(() => {
-    const o: Record<string, string[]> = {};
-    for (const [k] of DIMS_MANT) o[k] = Array.from(new Set(registros.map((r) => valDimMant(r, k)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'));
-    return o;
-  }, [registros]);
-
-  const setDim = (dim: string) => (next: Set<string> | null) =>
-    setFiltros((prev) => { const c = { ...prev }; if (next == null) delete c[dim]; else c[dim] = next; return c; });
-
-  const rows = useMemo(() => registros.filter((r) => {
-    for (const d in filtros) { const s = filtros[d]; if (s && !s.has(valDimMant(r, d))) return false; }
-    return true;
-  }), [registros, filtros]);
-
-  const total = rows.reduce((a, r) => a + r.costo, 0);
-  const n = rows.length;
-  const top = [...rows].sort((a, b) => b.costo - a.costo);
-  const maxRec = top[0];
-
-  const agrupa = (keyFn: (r: RegMant) => string): Punto[] => {
-    const m = new Map<string, number>();
-    rows.forEach((r) => m.set(keyFn(r), (m.get(keyFn(r)) || 0) + r.costo));
-    return Array.from(m.entries()).map(([l, v]) => ({ l, v }));
-  };
-  const porImp = agrupa((r) => r.impresora);
-  const grupoOrdenado = (orden: string[], keyFn: (r: RegMant) => string): Punto[] => {
-    const presentes = Array.from(new Set(rows.map(keyFn)));
-    const ord = [...orden.filter((t) => presentes.includes(t)), ...presentes.filter((t) => !orden.includes(t))];
-    return ord.map((t) => ({ l: t, v: rows.filter((r) => keyFn(r) === t).reduce((a, r) => a + r.costo, 0) }));
-  };
-  const porCategoria = grupoOrdenado(CAT_ORDEN, (r) => r.categoria);
-  const porNaturaleza = grupoOrdenado(NAT_ORDEN, (r) => r.naturaleza);
-  const porMesMap = new Map<string, number>();
-  rows.forEach((r) => { const ym = String(r.fecha).slice(0, 7); if (ym.length === 7) porMesMap.set(ym, (porMesMap.get(ym) || 0) + r.costo); });
-  const porMes = Array.from(porMesMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, v]) => { const [y, mo] = ym.split('-'); return { m: MESES[mo] || mo, y, v }; });
-
-  const hayFiltros = Object.keys(filtros).length > 0;
-  const fechaCorta = (f: string) => { const p = String(f).split('-'); return p.length === 3 ? `${+p[2]} ${MESES[p[1]] || p[1]} ${p[0]}` : (f || '—'); };
-
-  return (
-    <>
-      <div className="sec"><div className="sec-h"><h2>5 · Costos de mantenimiento</h2><span className="tag" style={{ background: '#eef0fe', color: '#4f46e5' }}>COP</span></div>
-        <p className="sec-p">Cuánto cuesta mantener los equipos: gasto acumulado, por equipo, por categoría de gasto, por naturaleza y su evolución en el tiempo.</p></div>
-
-      <div className="filtros" ref={barraRef}>
-        <span className="flab">Filtros</span>
-        {DIMS_MANT.map(([k, label]) => (
-          <FiltroMulti key={k} dim={k} label={label} opciones={opciones[k] || []} sel={filtros[k]}
-            abierto={abierto === k} onAbrir={() => setAbierto((a) => (a === k ? null : k))} onSet={setDim(k)} />
-        ))}
-        {hayFiltros && <button className="clr" onClick={() => { setFiltros({}); setAbierto(null); }}>Limpiar filtros</button>}
-      </div>
-
-      <div className="grid k4">
-        <Kpi l="Costo total" v={formatCOP(total)} s="Valor acumulado de los mantenimientos registrados." cls="acc" />
-        <Kpi l="N.º de mantenimientos" v={n} s="Cantidad total de mantenimientos registrados." />
-        <Kpi l="Promedio por registro" v={n ? formatCOP(Math.round(total / n)) : '$ 0'} s="Costo promedio por mantenimiento registrado." />
-        <Kpi l="Ticket más alto" v={maxRec ? formatCOP(maxRec.costo) : '$ 0'} s="Mayor costo registrado en un mantenimiento." />
-      </div>
-
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Costo por impresora</div>
-          <div className="chart-cap">Qué equipo concentra el gasto de mantenimiento.</div>
-          <Barras data={porImp} color="linear-gradient(90deg,#6366f1,#a855f7)" fmt={formatCOP} wide />
-        </div>
-        <div className="dcard">
-          <div className="chart-h">Costo por categoría de gasto</div>
-          <div className="chart-cap">En qué se va el dinero: consumibles, repuestos, servicio.</div>
-          <Donut data={porCategoria} colorMap={CAT_COL} fmt={formatCOP} centro={copCorto(total)} />
-        </div>
-      </div>
-
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Costo por naturaleza</div>
-          <div className="chart-cap">Cuánto se gasta en prevención vs. en corregir fallas.</div>
-          <Donut data={porNaturaleza} colorMap={NAT_COL} fmt={formatCOP} centro={copCorto(total)} />
-        </div>
-        <div className="dcard">
-          <div className="chart-h">Costo por mes</div>
-          <div className="chart-cap">Evolución del gasto de mantenimiento en los últimos meses.</div>
-          <Columnas data={porMes} fmt={kCop} />
-        </div>
-      </div>
-
-      <div className="grid" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Mantenimientos más costosos</div>
-          <div className="chart-cap">Los registros individuales de mayor valor.</div>
-          {top.length ? top.slice(0, 5).map((r, i) => (
-            <div className="lrow" key={i}>
-              <span className="rank">{i + 1}</span>
-              <div className="ln"><b>{r.desc}</b><div className="lsub">{r.impresora} · {fechaCorta(r.fecha)}</div></div>
-              <span className="lval num">{formatCOP(r.costo)}</span>
-            </div>
-          )) : <p className="empty">Sin registros de mantenimiento.</p>}
-        </div>
-      </div>
-    </>
-  );
-}
+import { countBy, sumBy, uniqDim } from '@/components/dashboard/agregaciones';
+import { DIMS, mesCorto } from '@/components/dashboard/constantes';
+import { FiltroMes, FiltroMulti, useCerrarAlClicFuera } from '@/components/dashboard/filtros';
+import { ModalExportar } from '@/components/dashboard/ModalExportar';
+import { SeccionEstadoActual } from '@/components/dashboard/SeccionEstadoActual';
+import { SeccionDemanda } from '@/components/dashboard/SeccionDemanda';
+import { SeccionProduccion } from '@/components/dashboard/SeccionProduccion';
+import { SeccionMantenimiento } from '@/components/dashboard/SeccionMantenimiento';
+import { SeccionCostosMantenimiento } from '@/components/dashboard/SeccionCostosMantenimiento';
+import { Cama, Fila, ImpresoraVista, StockFilamento } from '@/components/dashboard/tipos';
 
 export default function Dashboard() {
   const { datos, cargando, error, recargar } = useDatos<DatosDashboard>('/api/dashboard/datos');
   const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
   const [abierto, setAbierto] = useState<string | null>(null);
   const [exportar, setExportar] = useState(false);
-  const barraRef = useRef<HTMLDivElement>(null);
-
-  // Cierra el popover SOLO si el clic fue fuera de la barra de filtros; así, marcar/
-  // desmarcar valores dentro de una lista no cierra el popover ni pierde el clic.
-  useEffect(() => {
-    const alClic = (e: MouseEvent) => {
-      if (barraRef.current && !barraRef.current.contains(e.target as Node)) setAbierto(null);
-    };
-    document.addEventListener('mousedown', alClic);
-    return () => document.removeEventListener('mousedown', alClic);
-  }, []);
+  const barraRef = useCerrarAlClicFuera(setAbierto);
 
   const setDim = (dim: string) => (next: Set<string> | null) =>
     setFiltros((prev) => { const c = { ...prev }; if (next == null) delete c[dim]; else c[dim] = next; return c; });
@@ -552,7 +71,7 @@ export default function Dashboard() {
     // Camas en curso AGRUPADAS por código: una cama con N piezas produce N filas con el
     // mismo estado e impresora, así que se cuentan camas distintas (no filas); los
     // gramos/horas suman las piezas de cada cama.
-    const camasMap = new Map<string, { codigo: string; estado: string; impresora: string; materiales: Set<string>; gramos: number; horas: number; piezas: number }>();
+    const camasMap = new Map<string, Cama>();
     histTodo.forEach((h) => {
       if (!h.codigo) return; // filas sin código no forman una cama (igual que la ventana Camas)
       // La ventana Camas (agruparProyectos) trata un estado vacío como 'Activa'; se
@@ -606,7 +125,7 @@ export default function Dashboard() {
     const planDe = (id: string): Mantenimiento | null =>
       datos.mantenimientos.filter((m) => m.impresoraId === id && m.programacion && m.programacion !== 'ninguna')
         .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0] || null;
-    const vistaImp = (imp: Impresora) => {
+    const vistaImp = (imp: Impresora): ImpresoraVista => {
       const al = alertasMant.find((a) => a.impresoraId === imp.id);
       const p = planDe(imp.id);
       let valor = '—', sub = 'sin mantenimiento programado', ratio = 0;
@@ -626,7 +145,7 @@ export default function Dashboard() {
     const req = alertasMant.filter((a) => a.estado === 'vencido').length;
     const prox = alertasMant.filter((a) => a.estado === 'proximo').length;
     const rollosBajos = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral).length;
-    const stock = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral * 1.2)
+    const stock: StockFilamento[] = datos.filamentos.filter((f) => f.umbral > 0 && f.gramos <= f.umbral * 1.2)
       .map((f) => ({ ...f, ratio: f.gramos / f.umbral })).sort((a, b) => a.ratio - b.ratio).slice(0, 8);
 
     return {
@@ -642,15 +161,10 @@ export default function Dashboard() {
 
   const {
     estVivo, vencidas, aprob, resueltas, camas, nActivas, nPausa, gCurso, hCurso, camLista,
-    fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
+    porMesSol, porMesHist, fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
     porRol, porMotivo, porPrograma, porServicio, horasPorImpresora, materialPorTipo, porResultado,
     impVistas, oper, noDisp, req, prox, rollosBajos, stock,
   } = derivado;
-
-  const nombreImp = (id: string) => datos.impresoras.find((i) => i.id === id)?.nombre || id;
-  const CAMA_PILL: Record<string, string> = { 'Activa': 'p-ok', 'En pausa': 'p-warn' };
-  const EST_PILL: Record<string, string> = { 'Operativa': 'p-ok', 'Mantenimiento': 'p-warn', 'Fuera de servicio': 'p-crit' };
-  const NAT_PILL: Record<string, string> = { 'preventivo': 'p-ok', 'correctivo': 'p-warn' };
 
   const hayFiltros = Object.keys(filtros).length > 0;
 
@@ -699,152 +213,29 @@ export default function Dashboard() {
         {hayFiltros && <button className="clr" onClick={() => setFiltros({})}>✕ Limpiar filtros</button>}
       </div>
 
-      {/* 1 · ESTADO ACTUAL */}
-      <div className="sec"><div className="sec-h"><h2>1 · Estado actual de la operación</h2><span className="tag tag-live">En vivo</span></div>
-        <p className="sec-p">Lo que necesita atención — la primera lectura al abrir la app. Refleja el estado presente y no depende de los filtros.</p></div>
+      <SeccionEstadoActual
+        estVivo={estVivo} vencidas={vencidas} aprob={aprob} resueltas={resueltas}
+        nActivas={nActivas} nPausa={nPausa} gCurso={gCurso} hCurso={hCurso}
+        totalCamas={camas.length} camLista={camLista}
+      />
 
-      <div className="subhdr">Solicitudes de servicio</div>
-      <div className="grid k4">
-        <Kpi l="Nuevas sin responder" v={estVivo['Nueva']} s="estado «Nueva»" cls="acc" />
-        <Kpi l="Pendientes vencidas" v={vencidas} s="fecha tentativa ya pasó" cls="crit" />
-        <Kpi l="En revisión" v={estVivo['En Revisión']} s="esperando decisión" cls="warnb" />
-        <Kpi l="Tasa de aprobación" v={resueltas ? `${Math.round((aprob / resueltas) * 100)}%` : '—'} s={`${aprob} de ${resueltas} resueltas`} />
-      </div>
-      <div className="grid" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Embudo de solicitudes</div>
-          <div className="chart-cap">Dónde se acumulan las solicitudes en el proceso.</div>
-          <div className="pipe">
-            {['Nueva', 'En Revisión', 'Aprobada', 'Atendida', 'Rechazada'].map((e, i, arr) => (
-              <div className="stage" key={e} style={e === 'Rechazada' ? { background: '#fff5f6', borderColor: '#ffdbe0' } : undefined}>
-                <div className="sn" style={{ color: CEST[e] }}>{e}</div>
-                <div className="sv num">{estVivo[e]}</div>
-                {i < arr.length - 1 && <span className="arrow">→</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <SeccionDemanda
+        porMesSol={porMesSol} porRol={porRol} porMotivo={porMotivo}
+        porPrograma={porPrograma} porServicio={porServicio} top={top}
+      />
 
-      <div className="subhdr">Camas de impresión</div>
-      <div className="grid k4">
-        <Kpi l="Camas activas" v={nActivas} s="imprimiendo ahora" cls="acc" />
-        <Kpi l="En pausa" v={nPausa} s="requieren decisión" cls={nPausa ? 'warnb' : ''} />
-        <Kpi l="Material en curso" v={`${nf(gCurso)} g`} s={`${camas.length} camas sin finalizar`} />
-        <Kpi l="Horas en curso" v={`${(Math.round(hCurso * 10) / 10).toLocaleString('es-CO')} h`} s="carga activa estimada" />
-      </div>
-      <div className="grid" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Camas en curso ahora</div>
-          <div className="chart-cap">Lo que está montado en las camas en este momento — activas y en pausa.</div>
-          {camLista.length ? camLista.map((c) => (
-            <div className="lrow" key={c.codigo}>
-              <span className={`pill ${CAMA_PILL[c.estado] || 'p-mut'}`}>{c.estado}</span>
-              <div className="ln"><b>{c.codigo}</b><div className="lsub">{c.impresora === '(sin dato)' ? 'Impresora sin asignar' : c.impresora} · {c.piezas} pieza{c.piezas === 1 ? '' : 's'}{c.materiales.size ? ` · ${Array.from(c.materiales).join(', ')}` : ''}</div></div>
-              <span className="lval">{c.gramos ? `${nf(c.gramos)} g` : '—'}{c.horas ? ` · ${Math.round(c.horas * 10) / 10} h` : ''}</span>
-            </div>
-          )) : <p className="empty">Sin camas activas o en pausa en este momento.</p>}
-        </div>
-      </div>
+      <SeccionProduccion
+        finCount={fin.length} exito={exito} matUsado={matUsado} horasImpresion={horasImpresion}
+        desperdicioTotal={desperdicioTotal} horasPorImpresora={horasPorImpresora}
+        materialPorTipo={materialPorTipo} porResultado={porResultado} porMesHist={porMesHist}
+      />
 
-      {/* 2 · DEMANDA */}
-      <div className="sec"><div className="sec-h"><h2>2 · Análisis de la demanda</h2></div>
-        <p className="sec-p">Volumen en el tiempo, quién solicita y para qué.</p></div>
-      <div className="grid c2">
-        <div className="dcard"><div className="chart-h">Solicitudes por mes</div><div className="chart-cap">Tendencia de demanda para anticipar meses pico.</div><Columnas data={derivado.porMesSol} /></div>
-        <div className="dcard"><div className="chart-h">Por rol del solicitante</div><div className="chart-cap">A quién sirve el aula.</div><Donut data={porRol} /></div>
-      </div>
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Por motivo de la solicitud</div><div className="chart-cap">Para qué se usa la impresión.</div><Barras data={porMotivo} color="#6366f1" /></div>
-        <div className="dcard"><div className="chart-h">Por programa académico</div><div className="chart-cap">Qué carreras concentran la demanda (top 8).</div><Barras data={porPrograma} color="#5b53e0" /></div>
-      </div>
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Por tipo de servicio</div><div className="chart-cap">Impresión vs. modelado.</div><Donut data={porServicio} /></div>
-        <div className="dcard"><div className="chart-h">Top solicitantes recurrentes</div><div className="chart-cap">Quiénes vuelven más — respeta los filtros activos.</div>
-          {top.length ? top.map((t, i) => (
-            <div className="trow" key={t[0]}><span className="rank">{i + 1}</span><div className="tn">{t[0]}<div className="ts">{t[1]} solicitud{t[1] > 1 ? 'es' : ''}</div></div><span className="tv num">{t[1]}</span></div>
-          )) : <p className="empty">Sin registros con estos filtros.</p>}
-        </div>
-      </div>
+      <SeccionMantenimiento
+        totalImpresoras={datos.impresoras.length} oper={oper} noDisp={noDisp} req={req} prox={prox}
+        rollosBajos={rollosBajos} impVistas={impVistas} stock={stock}
+        impresoras={datos.impresoras} mantenimientos={datos.mantenimientos}
+      />
 
-      {/* 3 · PRODUCCIÓN */}
-      <div className="sec"><div className="sec-h"><h2>3 · Producción e impresión</h2><span className="tag tag-live">En vivo</span></div>
-        <p className="sec-p">Cómo se ha venido imprimiendo: resultados, material, tiempo y equipos.</p></div>
-      <div className="grid k4">
-        <Kpi l="Tasa de éxito" v={exito} s={`${fin.length} finalizadas`} cls="good" />
-        <Kpi l="Material usado" v={`${nf(matUsado)} g`} s="total impreso (finalizadas)" />
-        <Kpi l="Horas de impresión" v={`${(Math.round(horasImpresion * 10) / 10).toLocaleString('es-CO')} h`} s="acumuladas (finalizadas)" />
-        <Kpi l="Desperdicio" v={`${nf(desperdicioTotal)} g`} s="material perdido" />
-      </div>
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Horas de impresión por impresora</div><div className="chart-cap">Carga de trabajo de cada equipo.</div><Barras data={horasPorImpresora} color="#a855f7" fmt={(v) => `${Math.round(v * 10) / 10} h`} /></div>
-        <div className="dcard"><div className="chart-h">Material consumido por tipo</div><div className="chart-cap">Gramos usados por material — insumo para compras.</div><Barras data={materialPorTipo} color="#10b981" fmt={(v) => `${nf(v)} g`} /></div>
-      </div>
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard"><div className="chart-h">Resultado de las impresiones</div><div className="chart-cap">Éxitos vs. fallos vs. en curso.</div><Donut data={porResultado} colorMap={{ 'Exitoso': '#10b981', 'Fallido': '#f43f5e', '(en curso)': '#94a3b8' }} /></div>
-        <div className="dcard"><div className="chart-h">Impresiones por mes</div><div className="chart-cap">Volumen de producción en el tiempo.</div><Columnas data={derivado.porMesHist} /></div>
-      </div>
-
-      {/* 4 · MANTENIMIENTO */}
-      <div className="sec"><div className="sec-h"><h2>4 · Mantenimiento y equipos</h2><span className="tag tag-crit">Delicado</span></div>
-        <p className="sec-p">Solo lo crítico: equipos que requieren atención, horas sin mantenimiento y stock por reponer.</p></div>
-      <div className="grid k4">
-        <Kpi l="Impresoras operativas" v={`${oper}/${datos.impresoras.length}`} s="listas para imprimir" cls={oper === datos.impresoras.length ? 'good' : ''} />
-        <Kpi l="No disponibles" v={noDisp} s="en mant. o fuera de servicio" cls={noDisp ? 'warnb' : ''} />
-        <Kpi l="Requieren mantenimiento" v={req} s={prox ? `+${prox} próximo(s)` : 'según lo programado'} cls={req ? 'crit' : 'good'} />
-        <Kpi l="Rollos en umbral" v={rollosBajos} s="stock por reponer" cls={rollosBajos ? 'crit' : 'good'} />
-      </div>
-      <div className="grid c2" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Impresoras · estado y horas sin mantenimiento</div>
-          <div className="chart-cap">Horas desde el último mantenimiento frente a su umbral.</div>
-          {impVistas.map((e) => {
-            const pct = Math.min(100, Math.round(e.ratio * 100));
-            const col = e.al?.estado === 'vencido' ? '#f43f5e' : e.al?.estado === 'proximo' ? '#f59e0b' : '#10b981';
-            return (
-              <div className="lrow" key={e.imp.id}>
-                <div className="ln">
-                  <b>{e.imp.nombre}</b> <span className={`pill ${EST_PILL[e.imp.estado] || 'p-mut'}`}>{e.imp.estado}</span>
-                  {e.al?.estado === 'vencido' && <span className="pill p-crit"> ⚠ Requiere mant.</span>}
-                  {e.al?.estado === 'proximo' && <span className="pill p-warn"> ⏰ Próximo</span>}
-                  <div className="lsub">{e.imp.modelo} · {e.imp.horasAcumuladas} h acum · {e.sub}</div>
-                  <div className="mini-bar"><i style={{ width: `${pct}%`, background: col }} /></div>
-                </div>
-                <span className="lval">{e.valor}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="dcard">
-          <div className="chart-h">Stock crítico de filamento</div>
-          <div className="chart-cap">Rollos en o bajo su umbral de reposición.</div>
-          {stock.length ? stock.map((f) => {
-            const crit = f.gramos <= f.umbral;
-            return (
-              <div className="lrow" key={f.id}>
-                <div className="ln"><b>{f.id} · {f.tipo} {f.color}</b><div className="lsub">{f.marca} · umbral {f.umbral} g</div></div>
-                <span className={`pill ${crit ? 'p-crit' : 'p-warn'}`}>{crit ? 'En umbral' : 'Por vigilar'}</span>
-                <span className="lval">{Math.round(f.gramos)} g</span>
-              </div>
-            );
-          }) : <p className="empty">✓ Sin rollos por debajo del umbral.</p>}
-        </div>
-      </div>
-      <div className="grid" style={{ marginTop: 14 }}>
-        <div className="dcard">
-          <div className="chart-h">Últimos mantenimientos</div>
-          <div className="chart-cap">Historial reciente de intervenciones en los equipos.</div>
-          {datos.mantenimientos.length ? datos.mantenimientos.slice(0, 6).map((m, i) => (
-            <div className="lrow" key={i}>
-              <span className={`pill ${NAT_PILL[m.naturaleza] || 'p-mut'}`}>{m.naturaleza || '—'}</span>
-              <div className="ln"><b>{nombreImp(m.impresoraId)}</b> — {m.descripcion}<div className="lsub">{m.categoria ? `${capMant(m.categoria)} · ` : ''}{m.responsable || '—'} · {m.costo ? formatCOP(m.costo) : '—'}</div></div>
-              <span className="lval">{m.fecha}</span>
-            </div>
-          )) : <p className="empty">Sin mantenimientos registrados.</p>}
-        </div>
-      </div>
-
-      {/* 5 · COSTOS DE MANTENIMIENTO */}
       <SeccionCostosMantenimiento mantenimientos={datos.mantenimientos} impresoras={datos.impresoras} />
     </div>
   );
