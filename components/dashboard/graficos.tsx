@@ -4,14 +4,18 @@
 // Todas son puramente presentacionales — reciben datos ya agregados.
 
 import { PAL } from './constantes';
+import { Delta } from './comparacion';
 import { Punto, PuntoMes } from './tipos';
 
-export function Kpi({ l, v, s, cls }: { l: string; v: string | number; s?: string; cls?: string }) {
+export function Kpi({ l, v, s, cls, delta }: { l: string; v: string | number; s?: string; cls?: string; delta?: Delta | null }) {
   return (
     <div className={`dcard kpi ${cls || ''}`}>
       <div className="kl">{l}</div>
-      <div className="kv num">{v}</div>
+      {/* Cifras proporcionales, no tabulares: un número hero se lee mejor sin el
+          ancho fijo por dígito que usan las columnas de tabla. */}
+      <div className="kv">{v}</div>
       {s && <div className="ks">{s}</div>}
+      {delta && <div className={`kd kd-${delta.tono}`}>{delta.texto}</div>}
     </div>
   );
 }
@@ -33,14 +37,14 @@ export function Barras({ data, color, fmt, wide }: { data: Punto[]; color?: stri
   );
 }
 
-export function Columnas({ data, fmt }: { data: PuntoMes[]; fmt?: (v: number) => string }) {
+export function Columnas({ data, fmt, color }: { data: PuntoMes[]; fmt?: (v: number) => string; color?: string }) {
   if (!data.length) return <p className="empty">Sin datos.</p>;
   const max = Math.max(1, ...data.map((d) => d.v));
   return (
     <div className="cols">
       {data.map((d) => (
         <div className="col" key={d.m + d.y}>
-          <div className="cplot"><div className="cval num">{fmt ? fmt(d.v) : d.v}</div><div className="cbar" style={{ height: `${Math.max(3, Math.round((d.v / max) * 112))}px` }} /></div>
+          <div className="cplot"><div className="cval num">{fmt ? fmt(d.v) : d.v}</div><div className="cbar" style={color ? { height: `${Math.max(3, Math.round((d.v / max) * 112))}px`, background: color } : { height: `${Math.max(3, Math.round((d.v / max) * 112))}px` }} /></div>
           <div className="cl">{d.m}<span className="cy">{d.y}</span></div>
         </div>
       ))}
@@ -56,7 +60,7 @@ export function Donut({ data, colorMap, fmt, centro }: { data: Punto[]; colorMap
   const segs = d.map((x, i) => { const len = total ? (x.v / total) * circ : 0; const s = { len, col: (colorMap && colorMap[x.l]) || PAL[i % PAL.length], off }; off += len; return s; });
   return (
     <div className="donut-wrap">
-      <svg width="128" height="128" viewBox="0 0 128 128">
+      <svg className="donut-svg" viewBox="0 0 128 128">
         {!total && <circle cx="64" cy="64" r="52" fill="none" stroke="#eef0f7" strokeWidth="20" />}
         {segs.map((s, i) => (
           <circle key={i} cx="64" cy="64" r="52" fill="none" stroke={s.col} strokeWidth="20" strokeDasharray={`${s.len} ${circ - s.len}`} strokeDashoffset={-s.off} transform="rotate(-90 64 64)" />

@@ -4,6 +4,7 @@
 
 import { CEST, nf } from './constantes';
 import { Kpi } from './graficos';
+import { SeccionColapsable } from './SeccionColapsable';
 import { Cama } from './tipos';
 
 const CAMA_PILL: Record<string, string> = { 'Activa': 'p-ok', 'En pausa': 'p-warn' };
@@ -23,19 +24,24 @@ export function SeccionEstadoActual({
   totalCamas: number;
   camLista: Cama[];
 }) {
-  return (
-    <>
-      <div className="sec"><div className="sec-h"><h2>1 · Estado actual de la operación</h2><span className="tag tag-live">En vivo</span></div>
-        <p className="sec-p">Lo que necesita atención — la primera lectura al abrir la app. Refleja el estado presente y no depende de los filtros.</p></div>
+  const resumen = `${estVivo['Nueva'] ?? 0} nuevas · ${vencidas} vencidas · ${nActivas} camas activas`;
 
+  return (
+    <SeccionColapsable
+      id="estado-actual" numero={1} titulo="Estado actual de la operación"
+      tag={<span className="tag tag-live">En vivo</span>}
+      descripcion="Lo que necesita atención — la primera lectura al abrir la app. Refleja el estado presente y no depende de los filtros."
+      resumen={resumen}
+      abiertoPorDefecto
+    >
       <div className="subhdr">Solicitudes de servicio</div>
-      <div className="grid k4">
-        <Kpi l="Nuevas sin responder" v={estVivo['Nueva']} s="estado «Nueva»" cls="acc" />
-        <Kpi l="Pendientes vencidas" v={vencidas} s="fecha tentativa ya pasó" cls="crit" />
-        <Kpi l="En revisión" v={estVivo['En Revisión']} s="esperando decisión" cls="warnb" />
-        <Kpi l="Tasa de aprobación" v={resueltas ? `${Math.round((aprob / resueltas) * 100)}%` : '—'} s={`${aprob} de ${resueltas} resueltas`} />
-      </div>
-      <div className="grid" style={{ marginTop: 14 }}>
+      <div className="grid c2">
+        <div className="grid k2">
+          <Kpi l="Nuevas sin responder" v={estVivo['Nueva']} s="estado «Nueva»" cls="acc" />
+          <Kpi l="Pendientes vencidas" v={vencidas} s="fecha tentativa ya pasó" cls="crit" />
+          <Kpi l="En revisión" v={estVivo['En Revisión']} s="esperando decisión" cls="warnb" />
+          <Kpi l="Tasa de aprobación" v={resueltas ? `${Math.round((aprob / resueltas) * 100)}%` : '—'} s={`${aprob} de ${resueltas} resueltas`} />
+        </div>
         <div className="dcard">
           <div className="chart-h">Embudo de solicitudes</div>
           <div className="chart-cap">Dónde se acumulan las solicitudes en el proceso.</div>
@@ -44,7 +50,11 @@ export function SeccionEstadoActual({
               <div className="stage" key={e} style={e === 'Rechazada' ? { background: '#fff5f6', borderColor: '#ffdbe0' } : undefined}>
                 <div className="sn" style={{ color: CEST[e] }}>{e}</div>
                 <div className="sv num">{estVivo[e]}</div>
-                {i < arr.length - 1 && <span className="arrow">→</span>}
+                {i < arr.length - 1 && (
+                  <svg className="arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </div>
             ))}
           </div>
@@ -71,6 +81,6 @@ export function SeccionEstadoActual({
           )) : <p className="empty">Sin camas activas o en pausa en este momento.</p>}
         </div>
       </div>
-    </>
+    </SeccionColapsable>
   );
 }

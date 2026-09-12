@@ -10,14 +10,15 @@ import { capMant, MESES } from './constantes';
 import { useCerrarAlClicFuera } from './filtros';
 import { FiltroMulti } from './filtros';
 import { Barras, Columnas, Donut, Kpi } from './graficos';
+import { SeccionColapsable } from './SeccionColapsable';
 import { Punto, PuntoMes } from './tipos';
 
 type RegMant = { ano: string; impresora: string; naturaleza: string; categoria: string; responsable: string; desc: string; fecha: string; costo: number };
 const DIMS_MANT: [string, string][] = [['ano', 'Año'], ['impresora', 'Impresora'], ['naturaleza', 'Naturaleza'], ['categoria', 'Categoría'], ['responsable', 'Responsable']];
 const NAT_ORDEN = ['Preventivo', 'Correctivo'];
-const NAT_COL: Record<string, string> = { 'Preventivo': '#6366f1', 'Correctivo': '#f43f5e' };
+const NAT_COL: Record<string, string> = { 'Preventivo': '#1b1472', 'Correctivo': '#f43f5e' };
 const CAT_ORDEN = ['Consumible', 'Repuesto', 'Servicio', 'Sin gasto'];
-const CAT_COL: Record<string, string> = { 'Consumible': '#a855f7', 'Repuesto': '#f59e0b', 'Servicio': '#14b8a6', 'Sin gasto': '#94a3b8' };
+const CAT_COL: Record<string, string> = { 'Consumible': '#1b1472', 'Repuesto': '#f49600', 'Servicio': '#6e64e4', 'Sin gasto': '#94a3b8' };
 const copCorto = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`);
 const kCop = (n: number) => `$${Math.round(n / 1000)}k`;
 const valDimMant = (r: RegMant, d: string) => (d === 'ano' ? r.ano : d === 'impresora' ? r.impresora : d === 'naturaleza' ? r.naturaleza : d === 'categoria' ? r.categoria : r.responsable);
@@ -81,12 +82,16 @@ export function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { man
   const fechaCorta = (f: string) => { const p = String(f).split('-'); return p.length === 3 ? `${+p[2]} ${MESES[p[1]] || p[1]} ${p[0]}` : (f || '—'); };
 
   return (
-    <>
-      <div className="sec"><div className="sec-h"><h2>5 · Costos de mantenimiento</h2><span className="tag" style={{ background: '#eef0fe', color: '#4f46e5' }}>COP</span></div>
-        <p className="sec-p">Cuánto cuesta mantener los equipos: gasto acumulado, por equipo, por categoría de gasto, por naturaleza y su evolución en el tiempo.</p></div>
-
+    <SeccionColapsable
+      id="costos" numero={5} titulo="Costos de mantenimiento"
+      tag={<span className="tag" style={{ background: '#eef0fe', color: '#4f46e5' }}>COP</span>}
+      descripcion="Cuánto cuesta mantener los equipos: gasto acumulado, por equipo, por categoría de gasto, por naturaleza y su evolución en el tiempo."
+      resumen={`${formatCOP(total)} · ${n} registro${n === 1 ? '' : 's'}`}
+    >
+      {/* Esta barra es independiente de los filtros de arriba: tiene sus propias
+          dimensiones (Año, Impresora, Naturaleza...) porque aplica solo a mantenimiento. */}
       <div className="filtros" ref={barraRef}>
-        <span className="flab">Filtros</span>
+        <span className="flab">Filtros de esta sección (no afecta al resto del tablero)</span>
         {DIMS_MANT.map(([k, label]) => (
           <FiltroMulti key={k} dim={k} label={label} opciones={opciones[k] || []} sel={filtros[k]}
             abierto={abierto === k} onAbrir={() => setAbierto((a) => (a === k ? null : k))} onSet={setDim(k)} />
@@ -105,7 +110,7 @@ export function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { man
         <div className="dcard">
           <div className="chart-h">Costo por impresora</div>
           <div className="chart-cap">Qué equipo concentra el gasto de mantenimiento.</div>
-          <Barras data={porImp} color="linear-gradient(90deg,#6366f1,#a855f7)" fmt={formatCOP} wide />
+          <Barras data={porImp} color="#1b1472" fmt={formatCOP} wide />
         </div>
         <div className="dcard">
           <div className="chart-h">Costo por categoría de gasto</div>
@@ -140,6 +145,6 @@ export function SeccionCostosMantenimiento({ mantenimientos, impresoras }: { man
           )) : <p className="empty">Sin registros de mantenimiento.</p>}
         </div>
       </div>
-    </>
+    </SeccionColapsable>
   );
 }

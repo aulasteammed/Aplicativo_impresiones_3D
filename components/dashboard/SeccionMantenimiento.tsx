@@ -7,6 +7,7 @@ import { formatCOP } from '@/lib/util';
 import { Impresora, Mantenimiento } from '@/lib/types';
 import { capMant } from './constantes';
 import { Kpi } from './graficos';
+import { SeccionColapsable } from './SeccionColapsable';
 import { ImpresoraVista, StockFilamento } from './tipos';
 
 const EST_PILL: Record<string, string> = { 'Operativa': 'p-ok', 'Mantenimiento': 'p-warn', 'Fuera de servicio': 'p-crit' };
@@ -28,10 +29,16 @@ export function SeccionMantenimiento({
 }) {
   const nombreImp = (id: string) => impresoras.find((i) => i.id === id)?.nombre || id;
 
+  const resumen = `${oper}/${totalImpresoras} operativas · ${req} requieren mantenimiento`;
+
   return (
-    <>
-      <div className="sec"><div className="sec-h"><h2>4 · Mantenimiento y equipos</h2><span className="tag tag-crit">Delicado</span></div>
-        <p className="sec-p">Solo lo crítico: equipos que requieren atención, horas sin mantenimiento y stock por reponer.</p></div>
+    <SeccionColapsable
+      id="mantenimiento" numero={4} titulo="Mantenimiento y equipos"
+      tag={<span className="tag tag-crit">Delicado</span>}
+      descripcion="Solo lo crítico: equipos que requieren atención, horas sin mantenimiento y stock por reponer."
+      resumen={resumen}
+      abiertoPorDefecto
+    >
       <div className="grid k4">
         <Kpi l="Impresoras operativas" v={`${oper}/${totalImpresoras}`} s="listas para imprimir" cls={oper === totalImpresoras ? 'good' : ''} />
         <Kpi l="No disponibles" v={noDisp} s="en mant. o fuera de servicio" cls={noDisp ? 'warnb' : ''} />
@@ -87,6 +94,6 @@ export function SeccionMantenimiento({
           )) : <p className="empty">Sin mantenimientos registrados.</p>}
         </div>
       </div>
-    </>
+    </SeccionColapsable>
   );
 }

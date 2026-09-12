@@ -11,6 +11,7 @@ import { Aviso, BotonRecargar, useDatos } from '@/components/ui';
 import { canonCategoria, calcularAlertasMantenimiento, horasAlUltimoMantenimiento } from '@/lib/util';
 import { DatosDashboard, Impresora, Mantenimiento } from '@/lib/types';
 import { countBy, sumBy, uniqDim } from '@/components/dashboard/agregaciones';
+import { deltaMensual } from '@/components/dashboard/comparacion';
 import { DIMS, mesCorto } from '@/components/dashboard/constantes';
 import { FiltroMes, FiltroMulti, useCerrarAlClicFuera } from '@/components/dashboard/filtros';
 import { ModalExportar } from '@/components/dashboard/ModalExportar';
@@ -107,10 +108,27 @@ export default function Dashboard() {
     const horasImpresion = fin.reduce((a, h) => a + h.horas, 0);
     const desperdicioTotal = fin.reduce((a, h) => a + h.desperdicio, 0);
 
+    // Delta de la Sección 3 (mes actual vs. mes anterior): SIEMPRE sobre el
+    // historial completo sin filtrar (igual criterio "en vivo" que la Sección 1),
+    // para que la comparación no dependa de qué mes(es) tenga marcado el filtro.
+    const mesesConHistorial = Array.from(new Set(histTodo.map((h) => h.mes))).filter(Boolean).sort();
+    const mesUlt = mesesConHistorial[mesesConHistorial.length - 1];
+    const mesAnt = mesesConHistorial[mesesConHistorial.length - 2];
+    const finalizadasDelMes = (mm: string | undefined) =>
+      mm ? histTodo.filter((h) => h.mes === mm && (h.resultado === 'Exitoso' || h.resultado === 'Fallido')) : [];
+    const finUlt = finalizadasDelMes(mesUlt);
+    const finAnt = finalizadasDelMes(mesAnt);
+    const exitoPct = (arr: Fila[]) => (arr.length ? (arr.filter((h) => h.resultado === 'Exitoso').length / arr.length) * 100 : 0);
+    const sumaDe = (arr: Fila[], campo: string) => arr.reduce((a: number, h: Fila) => a + (+h[campo] || 0), 0);
+    const deltaExito = mesAnt ? deltaMensual(exitoPct(finUlt), exitoPct(finAnt), 'positivo') : null;
+    const deltaMatUsado = mesAnt ? deltaMensual(sumaDe(finUlt, 'gramos'), sumaDe(finAnt, 'gramos'), 'neutro') : null;
+    const deltaHorasImpresion = mesAnt ? deltaMensual(sumaDe(finUlt, 'horas'), sumaDe(finAnt, 'horas'), 'neutro') : null;
+    const deltaDesperdicio = mesAnt ? deltaMensual(sumaDe(finUlt, 'desperdicio'), sumaDe(finAnt, 'desperdicio'), 'negativo') : null;
+
     // Top solicitantes
     const pp: Record<string, number> = {};
     sol.forEach((s) => { pp[s.nombre] = (pp[s.nombre] || 0) + 1; });
-    const top = Object.entries(pp).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const top = Object.entries(pp).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     const porRol = countBy(sol, 'rol');
     const porMotivo = countBy(sol, 'motivo');
@@ -151,6 +169,7 @@ export default function Dashboard() {
     return {
       estVivo, vencidas, aprob, resueltas, camas, nActivas, nPausa, gCurso, hCurso, camLista,
       porMesSol, porMesHist, fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
+      deltaExito, deltaMatUsado, deltaHorasImpresion, deltaDesperdicio,
       porRol, porMotivo, porPrograma, porServicio, horasPorImpresora, materialPorTipo, porResultado,
       impVistas, oper, noDisp, req, prox, rollosBajos, stock,
     };
@@ -162,6 +181,7 @@ export default function Dashboard() {
   const {
     estVivo, vencidas, aprob, resueltas, camas, nActivas, nPausa, gCurso, hCurso, camLista,
     porMesSol, porMesHist, fin, exito, matUsado, horasImpresion, desperdicioTotal, top,
+    deltaExito, deltaMatUsado, deltaHorasImpresion, deltaDesperdicio,
     porRol, porMotivo, porPrograma, porServicio, horasPorImpresora, materialPorTipo, porResultado,
     impVistas, oper, noDisp, req, prox, rollosBajos, stock,
   } = derivado;
@@ -220,6 +240,7 @@ export default function Dashboard() {
       />
 
       <SeccionDemanda
+        totalSolicitudes={sol.length}
         porMesSol={porMesSol} porRol={porRol} porMotivo={porMotivo}
         porPrograma={porPrograma} porServicio={porServicio} top={top}
       />
@@ -228,6 +249,8 @@ export default function Dashboard() {
         finCount={fin.length} exito={exito} matUsado={matUsado} horasImpresion={horasImpresion}
         desperdicioTotal={desperdicioTotal} horasPorImpresora={horasPorImpresora}
         materialPorTipo={materialPorTipo} porResultado={porResultado} porMesHist={porMesHist}
+        deltaExito={deltaExito} deltaMatUsado={deltaMatUsado}
+        deltaHorasImpresion={deltaHorasImpresion} deltaDesperdicio={deltaDesperdicio}
       />
 
       <SeccionMantenimiento

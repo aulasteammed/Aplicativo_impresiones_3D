@@ -1,16 +1,50 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import Impresora3D from '@/components/Impresora3D';
 
+// Ícono de línea genérico (mismo trazo que Impresora3D: stroke, sin relleno) —
+// evita depender de emojis, que se ven distinto según el sistema operativo.
+function IconoLinea({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
 const NAV: { href: string; label: string; icon: ReactNode }[] = [
-  { href: '/', label: 'Dashboard', icon: '📊' },
-  { href: '/solicitudes', label: 'Solicitudes', icon: '📥' },
+  {
+    href: '/', label: 'Dashboard',
+    icon: <IconoLinea><path d="M4 20V10M12 20V4M20 20v-6" /></IconoLinea>,
+  },
+  {
+    href: '/solicitudes', label: 'Solicitudes',
+    icon: <IconoLinea><path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" /><path d="M8 12h8M8 16h5" /></IconoLinea>,
+  },
   { href: '/proyectos', label: 'Camas de impresión', icon: <Impresora3D className="h-[1.2em] w-[1.2em]" /> },
-  { href: '/historial', label: 'Historial', icon: '📚' },
-  { href: '/inventario', label: 'Inventario', icon: '🧵' },
+  {
+    href: '/historial', label: 'Historial',
+    icon: <IconoLinea><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></IconoLinea>,
+  },
+  {
+    href: '/inventario', label: 'Inventario',
+    icon: <IconoLinea><path d="M12 3 4 7v10l8 4 8-4V7Z" /><path d="M4 7l8 4 8-4M12 11v10" /></IconoLinea>,
+  },
 ];
 
 export default function Sidebar() {
@@ -37,10 +71,10 @@ export default function Sidebar() {
   if (pathname === '/login') return null;
 
   return (
-    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col bg-steam-gradient text-white">
-      <div className="px-5 pb-5 pt-7">
-        <h1 className="text-xl font-bold tracking-tight">Aula STEAM</h1>
-        <p className="mt-1 text-xs text-indigo-200">Gestión de Impresión 3D</p>
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
+      <div className="flex flex-col items-center gap-1 px-5 pb-5 pt-7">
+        <Image src="/IdentificadorAulaSTEAM.png" alt="Aula STEAM Sonny Jiménez" width={170} height={87} priority className="h-auto w-[170px]" />
+        <p className="text-xs text-slate-400">Gestión de Impresión 3D</p>
       </div>
       <nav className="flex-1 space-y-1 px-3">
         {NAV.map((item) => {
@@ -49,10 +83,11 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                activo ? 'bg-white/20 text-white shadow-inner' : 'text-indigo-100 hover:bg-white/10 hover:text-white'
+              className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                activo ? 'bg-steam-50 text-steam-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
+              {activo && <span aria-hidden className="absolute bottom-1.5 left-0 top-1.5 w-1 rounded-full bg-naranja-500" />}
               <span aria-hidden>{item.icon}</span>
               {item.label}
             </Link>
@@ -63,14 +98,14 @@ export default function Sidebar() {
         <div className="px-3">
           <button
             onClick={salir}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-indigo-100 transition hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
           >
-            <span aria-hidden>🔒</span>
+            <IconoLinea><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></IconoLinea>
             Cerrar sesión
           </button>
         </div>
       )}
-      <div className="px-5 py-5 text-[11px] leading-relaxed text-indigo-200">
+      <div className="border-t border-slate-100 px-5 py-5 text-[11px] leading-relaxed text-slate-400">
         Aula STEAM Sonny Jiménez M3-119
         <br />
         UNAL Medellín · {new Date().getFullYear()}
