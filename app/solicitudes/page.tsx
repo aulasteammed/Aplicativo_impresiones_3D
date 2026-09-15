@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EstadoSolicitud, Solicitud } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, Paginacion, diffCampos, useDatos } from '@/components/ui';
+import { IconoBasura, IconoSobre } from '@/components/Iconos';
 
 const ESTADOS: EstadoSolicitud[] = ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'];
 
@@ -204,7 +205,7 @@ export default function PaginaSolicitudes() {
         <ModalConfirmar
           abierto
           titulo="Notificar al solicitante"
-          icono="✉️"
+          icono={<IconoSobre />}
           confirmarTexto="Sí, enviar correo"
           cancelarTexto="No, gracias"
           onCancelar={() => setConfirmarNotif(null)}
@@ -244,7 +245,7 @@ export default function PaginaSolicitudes() {
 
       {porEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar solicitud" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar solicitud" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}

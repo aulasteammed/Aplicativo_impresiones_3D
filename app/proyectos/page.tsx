@@ -10,6 +10,7 @@ import {
 } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
 import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso, MATERIALES_CANONICOS, FILAMENTO_PROPIO } from '@/lib/util';
+import { IconoAdvertencia, IconoBasura, IconoCerrar, IconoLupa } from '@/components/Iconos';
 
 export default function PaginaProyectos() {
   const { datos, cargando, error, recargar } = useDatos<{ proyectos: Proyecto[] }>('/api/proyectos');
@@ -224,7 +225,7 @@ export default function PaginaProyectos() {
 
       {porEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar cama" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar cama" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
@@ -514,7 +515,7 @@ function ModalProyecto({
             <div className="rounded-xl border border-dashed border-steam-300 bg-steam-50/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-steam-700">🔍 Análisis OCR (capturas del slicer)</p>
+                  <p className="inline-flex items-center gap-1.5 font-semibold text-steam-700"><IconoLupa /> Análisis OCR (capturas del slicer)</p>
                   <p className="text-xs text-slate-500">Suba capturas de Bambu Studio / Cura / Prusa y el OCR extraerá gramos, tiempo y material localmente (sin IA).</p>
                 </div>
                 <label className="btn-secondary cursor-pointer">
@@ -530,11 +531,11 @@ function ModalProyecto({
                     <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs text-slate-500">{r.archivo}</span>
-                        <span className="font-medium">{r.pesoGramos != null ? `${r.pesoGramos} g` : '⚠ peso no identificado'}</span>
+                        <span className="inline-flex items-center gap-1 font-medium">{r.pesoGramos != null ? `${r.pesoGramos} g` : <><IconoAdvertencia /> peso no identificado</>}</span>
                         <span>·</span>
-                        <span className="font-medium">{r.tiempoTexto ? `${r.tiempoTexto} (${r.tiempoHoras} h)` : '⚠ tiempo no identificado'}</span>
+                        <span className="inline-flex items-center gap-1 font-medium">{r.tiempoTexto ? `${r.tiempoTexto} (${r.tiempoHoras} h)` : <><IconoAdvertencia /> tiempo no identificado</>}</span>
                         <span>·</span>
-                        <span className="font-medium">{r.material ?? '⚠ material no identificado'}</span>
+                        <span className="inline-flex items-center gap-1 font-medium">{r.material ?? <><IconoAdvertencia /> material no identificado</>}</span>
                         <select
                           className="input ml-auto !w-auto text-xs"
                           defaultValue=""
@@ -586,7 +587,7 @@ function ModalProyecto({
                             <p className="truncate text-sm font-medium">{it.nombre}</p>
                             <p className="truncate text-xs text-slate-500">{it.descripcionPieza}</p>
                           </div>
-                          <button type="button" onClick={() => quitarItem(it._key)} className="shrink-0 text-sm text-rose-500 hover:text-rose-700" title="Quitar esta solicitud de la cama">✕</button>
+                          <button type="button" onClick={() => quitarItem(it._key)} className="shrink-0 text-sm text-rose-500 hover:text-rose-700" title="Quitar esta solicitud de la cama"><IconoCerrar /></button>
                         </div>
                         <div>
                           <label className="label">Tiempo (h / min) *</label>
@@ -634,11 +635,11 @@ function ModalProyecto({
                         </div>
                       </div>
                       {it.filamentoId === FILAMENTO_PROPIO ? (
-                        <p className="mt-2 text-xs text-amber-700">⚠ Filamento proporcionado por el usuario, no se descontará del inventario. Registre el <b>material</b> y los <b>gramos</b> para la trazabilidad de la impresión.</p>
+                        <p className="mt-2 inline-flex items-start gap-1 text-xs text-amber-700"><IconoAdvertencia className="mt-px shrink-0" /> Filamento proporcionado por el usuario, no se descontará del inventario. Registre el <b>material</b> y los <b>gramos</b> para la trazabilidad de la impresión.</p>
                       ) : fil ? (
-                        <p className={`mt-2 text-xs ${insuficiente ? 'text-amber-700' : 'text-slate-500'}`}>
+                        <p className={`mt-2 text-xs ${insuficiente ? 'inline-flex items-start gap-1 text-amber-700' : 'text-slate-500'}`}>
                           {insuficiente
-                            ? `⚠ Requiere ${Math.round(it.gramos)} g y solo hay ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontará igual al finalizar (puede quedar en 0).`
+                            ? <><IconoAdvertencia className="mt-px shrink-0" /> {`Requiere ${Math.round(it.gramos)} g y solo hay ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontará igual al finalizar (puede quedar en 0).`}</>
                             : `Disponible: ${Math.round(fil.gramosRestantes)} g de ${desc(fil)}. Se descontarán los gramos de esta pieza al finalizar la cama.`}
                         </p>
                       ) : sinCompatibles ? (

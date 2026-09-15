@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizarTexto } from '@/lib/util';
+import { IconoLapiz } from '@/components/Iconos';
 
 export function Modal({
   abierto, onCerrar, titulo, children, ancho = 'max-w-2xl', centrado = false,
@@ -23,7 +24,7 @@ export function Modal({
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCerrar(); }}
     >
       <div className={`my-8 w-full ${ancho} rounded-2xl bg-white shadow-2xl`}>
-        <div className="flex items-center justify-between rounded-t-2xl bg-steam-gradient px-6 py-4">
+        <div className="flex items-center justify-between rounded-t-2xl bg-steam-600 px-6 py-4">
           <h2 className="text-lg font-semibold text-white">{titulo}</h2>
           <button onClick={onCerrar} className="rounded-full p-1 text-indigo-100 hover:bg-white/20 hover:text-white" aria-label="Cerrar">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -57,7 +58,7 @@ export function ModalConfirmar({
       <div className="space-y-6">
         <div className="flex gap-4">
           {icono != null && (
-            <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">
+            <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-600 text-2xl text-white shadow-sm">
               {icono}
             </div>
           )}
@@ -102,7 +103,7 @@ export function ModalConfirmarCambios({
     <Modal abierto={abierto} onCerrar={onVolver} titulo={titulo} ancho="max-w-lg" centrado>
       <div className="space-y-5">
         <div className="flex gap-4">
-          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">✎</div>
+          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-600 text-2xl text-white shadow-sm"><IconoLapiz /></div>
           <div className="min-w-0 text-sm text-slate-600">
             {cambios.length === 0 ? (
               <p>No se detectaron cambios respecto a los valores actuales.</p>

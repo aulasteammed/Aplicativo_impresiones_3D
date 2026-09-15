@@ -8,6 +8,7 @@ import { AlertaStock, Filamento, Impresora, Mantenimiento, MovimientoInventario,
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, ModalConfirmarCambios, diffCampos, useDatos } from '@/components/ui';
 import { calcularAlertasAgregadas, formatCOP } from '@/lib/util';
 import Impresora3D from '@/components/Impresora3D';
+import { IconoAdvertencia, IconoBasura, IconoCalendario, IconoHilo, IconoLlave, IconoReloj } from '@/components/Iconos';
 
 type Pestania = 'filamentos' | 'impresoras' | 'mantenimiento';
 
@@ -26,9 +27,9 @@ export default function PaginaInventario() {
 
       <div className="flex gap-1 rounded-xl bg-slate-200/60 p-1">
         {([
-          ['filamentos', '🧵 Filamentos'],
+          ['filamentos', <span key="fil" className="inline-flex items-center gap-1.5"><IconoHilo />Filamentos</span>],
           ['impresoras', <span key="imp" className="inline-flex items-center gap-1.5"><Impresora3D className="h-[1.15em] w-[1.15em]" />Impresoras</span>],
-          ['mantenimiento', '🔧 Mantenimiento'],
+          ['mantenimiento', <span key="mant" className="inline-flex items-center gap-1.5"><IconoLlave />Mantenimiento</span>],
         ] as [Pestania, ReactNode][]).map(([id, label]) => (
           <button
             key={id}
@@ -127,7 +128,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
       {error && <Aviso tipo="error">Error: {error}</Aviso>}
       {(datos?.alertas?.length ?? 0) > 0 && (
         <Aviso tipo="alerta">
-          <b>⚠ Stock bajo:</b>{' '}
+          <b className="inline-flex items-center gap-1"><IconoAdvertencia /> Stock bajo:</b>{' '}
           {datos!.alertas.map((a) => `${a.tipo} ${a.color} (${a.filamentoId}: ${a.gramosRestantes} g ≤ ${a.umbral} g)`).join(' · ')}
         </Aviso>
       )}
@@ -244,9 +245,9 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
                   <td className="td">{Math.round(a.total)} g</td>
                   <td className="td">{a.umbralGramos} g</td>
                   <td className="td">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${a.estado === 'debajo' ? 'bg-rose-100 text-rose-700 ring-rose-200' : 'bg-amber-100 text-amber-700 ring-amber-200'}`}>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${a.estado === 'debajo' ? 'bg-rose-100 text-rose-700 ring-rose-200' : 'bg-amber-100 text-amber-700 ring-amber-200'}`}>
                       {a.estado === 'debajo'
-                        ? `⚠ Por debajo del umbral (faltan ${Math.max(0, Math.round(a.umbralGramos - a.total))} g)`
+                        ? <><IconoAdvertencia /> {`Por debajo del umbral (faltan ${Math.max(0, Math.round(a.umbralGramos - a.total))} g)`}</>
                         : `Cerca del umbral (solo ${Math.round(a.total - a.umbralGramos)} g de margen)`}
                     </span>
                   </td>
@@ -282,7 +283,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 
       {porEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar filamento" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar filamento" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminarFilamento(porEliminar)}
@@ -293,7 +294,7 @@ function TabFilamentos({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 
       {umbralEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar umbral" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar umbral" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setUmbralEliminar(null)}
           onConfirmar={() => hacerEliminarUmbral(umbralEliminar)}
@@ -668,7 +669,7 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
               </div>
               <Chip valor={imp.estado} />
             </div>
-            <p className="mt-3 text-sm">⏱ <b>{imp.horasAcumuladas}</b> h de impresión acumuladas</p>
+            <p className="mt-3 inline-flex items-center gap-1 text-sm"><IconoReloj /> <b>{imp.horasAcumuladas}</b> h de impresión acumuladas</p>
             {imp.notas && <p className="mt-1 text-xs text-slate-500">{imp.notas}</p>}
             <div className="mt-3"><AccionesFila onEditar={() => setEditando(imp)} onEliminar={() => setPorEliminar(imp)} /></div>
           </div>
@@ -686,7 +687,7 @@ function TabImpresoras({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'; t
 
       {porEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar impresora" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar impresora" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}
@@ -825,7 +826,13 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
                 <td className="td">{m.descripcion}</td>
                 <td className="td whitespace-nowrap">{m.costo ? formatCOP(m.costo) : '—'}</td>
                 <td className="td">{m.responsable || '—'}</td>
-                <td className="td text-xs whitespace-nowrap">{m.programacion === 'fecha' ? `📅 ${m.proximaFecha}` : m.programacion === 'horas' ? `⏱ cada ${m.cadaHoras} h` : '—'}</td>
+                <td className="td text-xs whitespace-nowrap">
+                  {m.programacion === 'fecha'
+                    ? <span className="inline-flex items-center gap-1"><IconoCalendario /> {m.proximaFecha}</span>
+                    : m.programacion === 'horas'
+                      ? <span className="inline-flex items-center gap-1"><IconoReloj /> cada {m.cadaHoras} h</span>
+                      : '—'}
+                </td>
                 <td className="td"><AccionesFila onEditar={() => setModal(m)} onEliminar={() => setPorEliminar(m)} /></td>
               </tr>
             ))}
@@ -845,7 +852,7 @@ function TabMantenimiento({ onMensaje }: { onMensaje: (m: { tipo: 'ok' | 'error'
 
       {porEliminar && (
         <ModalConfirmar
-          abierto titulo="Eliminar mantenimiento" icono="🗑️" tono="danger"
+          abierto titulo="Eliminar mantenimiento" icono={<IconoBasura />} tono="danger"
           confirmarTexto="Eliminar" cancelarTexto="Cancelar" procesando={eliminando}
           onCancelar={() => setPorEliminar(null)}
           onConfirmar={() => hacerEliminar(porEliminar)}

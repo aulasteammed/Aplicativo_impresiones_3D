@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Aviso, Modal } from '@/components/ui';
+import { IconoDescarga, IconoGrafico } from '@/components/Iconos';
 
 const OPCIONES_EXPORT: [string, string, string][] = [
   ['solicitudes', 'Solicitudes', 'Todas las solicitudes del formulario'],
@@ -64,7 +65,7 @@ export function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
       <div className="space-y-5">
         {error && <Aviso tipo="error">{error}</Aviso>}
         <div className="flex gap-4">
-          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-gradient text-2xl text-white shadow-sm">📊</div>
+          <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-steam-600 text-2xl text-white shadow-sm"><IconoGrafico /></div>
           <div className="min-w-0 flex-1 text-sm text-slate-600">
             <p>Elige qué información incluir. Se genera un archivo <b>.xlsx</b> con una hoja por cada conjunto seleccionado.</p>
             <div className="mt-3 flex gap-3 text-xs">
@@ -116,7 +117,7 @@ export function ModalExportar({ onCerrar }: { onCerrar: () => void }) {
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onCerrar} disabled={generando}>Cancelar</button>
           <button className="btn-primary" onClick={descargar} disabled={generando || !alguno || rangoInvalido}>
-            {generando ? 'Generando…' : '⬇ Descargar .xlsx'}
+            {generando ? 'Generando…' : <span className="inline-flex items-center gap-1.5"><IconoDescarga /> Descargar .xlsx</span>}
           </button>
         </div>
       </div>

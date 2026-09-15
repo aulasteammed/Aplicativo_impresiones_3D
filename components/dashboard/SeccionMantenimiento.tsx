@@ -5,6 +5,7 @@
 
 import { formatCOP } from '@/lib/util';
 import { Impresora, Mantenimiento } from '@/lib/types';
+import { IconoAdvertencia, IconoCheck, IconoReloj } from '@/components/Iconos';
 import { capMant } from './constantes';
 import { Kpi } from './graficos';
 import { SeccionColapsable } from './SeccionColapsable';
@@ -56,8 +57,8 @@ export function SeccionMantenimiento({
               <div className="lrow" key={e.imp.id}>
                 <div className="ln">
                   <b>{e.imp.nombre}</b> <span className={`pill ${EST_PILL[e.imp.estado] || 'p-mut'}`}>{e.imp.estado}</span>
-                  {e.al?.estado === 'vencido' && <span className="pill p-crit"> ⚠ Requiere mant.</span>}
-                  {e.al?.estado === 'proximo' && <span className="pill p-warn"> ⏰ Próximo</span>}
+                  {e.al?.estado === 'vencido' && <span className="pill p-crit inline-flex items-center gap-1"><IconoAdvertencia /> Requiere mant.</span>}
+                  {e.al?.estado === 'proximo' && <span className="pill p-warn inline-flex items-center gap-1"><IconoReloj /> Próximo</span>}
                   <div className="lsub">{e.imp.modelo} · {e.imp.horasAcumuladas} h acum · {e.sub}</div>
                   <div className="mini-bar"><i style={{ width: `${pct}%`, background: col }} /></div>
                 </div>
@@ -78,7 +79,7 @@ export function SeccionMantenimiento({
                 <span className="lval">{Math.round(f.gramos)} g</span>
               </div>
             );
-          }) : <p className="empty">✓ Sin rollos por debajo del umbral.</p>}
+          }) : <p className="empty inline-flex items-center gap-1"><IconoCheck /> Sin rollos por debajo del umbral.</p>}
         </div>
       </div>
       <div className="grid" style={{ marginTop: 14 }}>

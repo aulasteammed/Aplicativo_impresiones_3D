@@ -5,27 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import Impresora3D from '@/components/Impresora3D';
-
-// Ícono de línea genérico (mismo trazo que Impresora3D: stroke, sin relleno) —
-// evita depender de emojis, que se ven distinto según el sistema operativo.
-function IconoLinea({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      {children}
-    </svg>
-  );
-}
+import { IconoLinea } from '@/components/Iconos';
 
 const NAV: { href: string; label: string; icon: ReactNode }[] = [
   {
@@ -67,7 +47,7 @@ export default function Sidebar() {
     }
   }
 
-  // La pantalla de clave se muestra sola, sin la barra lateral.
+
   if (pathname === '/login') return null;
 
   return (

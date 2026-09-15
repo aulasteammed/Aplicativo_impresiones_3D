@@ -34,7 +34,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-steam-gradient p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-steam-600 p-4">
       <form onSubmit={entrar} className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
         <div className="text-center">
           <Impresora3D className="mx-auto h-14 w-14 text-steam-600" title="Impresora 3D" />

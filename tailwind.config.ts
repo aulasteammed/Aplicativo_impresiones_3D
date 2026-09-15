@@ -38,9 +38,6 @@ const config: Config = {
           900: '#603b00',
         },
       },
-      backgroundImage: {
-        'steam-gradient': 'linear-gradient(135deg, #1b1472 0%, #f49600 100%)',
-      },
     },
   },
   plugins: [],

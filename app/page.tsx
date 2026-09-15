@@ -15,6 +15,7 @@ import { deltaMensual } from '@/components/dashboard/comparacion';
 import { DIMS, mesCorto } from '@/components/dashboard/constantes';
 import { FiltroMes, FiltroMulti, useCerrarAlClicFuera } from '@/components/dashboard/filtros';
 import { ModalExportar } from '@/components/dashboard/ModalExportar';
+import { IconoDescarga } from '@/components/Iconos';
 import { SeccionEstadoActual } from '@/components/dashboard/SeccionEstadoActual';
 import { SeccionDemanda } from '@/components/dashboard/SeccionDemanda';
 import { SeccionProduccion } from '@/components/dashboard/SeccionProduccion';
@@ -197,8 +198,8 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400">{datos.solicitudes.length} solicitudes · {datos.historial.length} impresiones</span>
-          <button className="btn-secondary" onClick={() => setExportar(true)} title="Exportar datos a Excel (.xlsx)">
-            ⬇ Exportar
+          <button className="btn-secondary inline-flex items-center gap-1.5" onClick={() => setExportar(true)} title="Exportar datos a Excel (.xlsx)">
+            <IconoDescarga /> Exportar
           </button>
           <BotonRecargar onClick={recargar} cargando={cargando} />
         </div>
