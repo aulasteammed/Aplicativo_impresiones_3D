@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { RegistroHistorial } from '@/lib/types';
-import { Aviso, BarraBusqueda, BotonRecargar, Chip, KpiCard, Modal, Paginacion, useDatos } from '@/components/ui';
+import { Aviso, BarraBusqueda, BotonRecargar, Chip, KpiCard, Modal, Paginacion, Seccion, useDatos } from '@/components/ui';
 import { num, esCamaEnCurso } from '@/lib/util';
 
 export default function PaginaHistorial() {
@@ -119,21 +119,37 @@ export default function PaginaHistorial() {
 
       <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo={`Registro — ${detalle?.codigo || 'sin código'}`} ancho="max-w-3xl">
         {detalle && (
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <Campo etiqueta="Cama" valor={detalle.codigo || 'sin código'} />
-            <Campo etiqueta="Filamento (inventario)" valor={detalle.filamentoId || '—'} />
-            <Campo etiqueta="Marca temporal solicitud" valor={detalle.marcaTemporal} />
-            <Campo etiqueta="Solicitante" valor={detalle.nombre} />
-            <Campo etiqueta="Correo" valor={detalle.correo} />
-            <Campo etiqueta="Rol / Programa" valor={`${detalle.rol || '—'} / ${detalle.programa || '—'}`} />
-            <Campo etiqueta="Motivo" valor={detalle.motivo} />
-            <div className="col-span-2"><Campo etiqueta="Pieza" valor={detalle.descripcionPieza} /></div>
-            <div className="col-span-2"><Campo etiqueta="Objetivo" valor={detalle.objetivoPieza} /></div>
-            <Campo etiqueta="Impresora" valor={detalle.impresora} />
-            <Campo etiqueta="Tiempo / Material" valor={`${detalle.tiempoHoras || '—'} h · ${detalle.gramos || '—'} g · ${detalle.material || '—'}`} />
-            <Campo etiqueta="Estado / Resultado" valor={`${detalle.estado || '—'} / ${detalle.resultado || '—'}`} />
-            <Campo etiqueta="Desperdicio" valor={detalle.desperdicio ? `${detalle.desperdicio} g` : '—'} />
-            <div className="col-span-2"><Campo etiqueta="Comentarios" valor={detalle.comentarios || '—'} /></div>
+          <div className="space-y-5 text-sm">
+            <Seccion titulo="Identificación">
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Cama" valor={detalle.codigo || 'sin código'} />
+                <Campo etiqueta="Filamento (inventario)" valor={detalle.filamentoId || '—'} />
+                <Campo etiqueta="Marca temporal solicitud" valor={detalle.marcaTemporal} />
+              </div>
+            </Seccion>
+            <Seccion titulo="Solicitante">
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Solicitante" valor={detalle.nombre} />
+                <Campo etiqueta="Rol / Programa" valor={`${detalle.rol || '—'} / ${detalle.programa || '—'}`} />
+                <Campo etiqueta="Correo" valor={detalle.correo} />
+                <Campo etiqueta="Motivo" valor={detalle.motivo} />
+              </div>
+            </Seccion>
+            <Seccion titulo="Pieza">
+              <div className="space-y-3">
+                <Campo etiqueta="Pieza" valor={detalle.descripcionPieza} />
+                <Campo etiqueta="Objetivo" valor={detalle.objetivoPieza} />
+              </div>
+            </Seccion>
+            <Seccion titulo="Impresión">
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Impresora" valor={detalle.impresora} />
+                <Campo etiqueta="Tiempo / Material" valor={`${detalle.tiempoHoras || '—'} h · ${detalle.gramos || '—'} g · ${detalle.material || '—'}`} />
+                <Campo etiqueta="Estado / Resultado" valor={`${detalle.estado || '—'} / ${detalle.resultado || '—'}`} />
+                <Campo etiqueta="Desperdicio" valor={detalle.desperdicio ? `${detalle.desperdicio} g` : '—'} />
+              </div>
+            </Seccion>
+            <Campo etiqueta="Comentarios" valor={detalle.comentarios || '—'} />
           </div>
         )}
       </Modal>

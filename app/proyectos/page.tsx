@@ -9,7 +9,7 @@ import {
   AnalisisSlicerResultado, EstadoProyecto, Filamento, Impresora, ItemProyecto, Proyecto, Solicitud,
 } from '@/lib/types';
 import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Combobox, Modal, ModalConfirmar, Paginacion, useDatos } from '@/components/ui';
-import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso, MATERIALES_CANONICOS, FILAMENTO_PROPIO } from '@/lib/util';
+import { generarCodigoProyecto, canonicalizarMaterial, esCamaEnCurso, normalizarTexto, MATERIALES_CANONICOS, FILAMENTO_PROPIO } from '@/lib/util';
 import { IconoAdvertencia, IconoBasura, IconoCerrar, IconoLupa } from '@/components/Iconos';
 
 export default function PaginaProyectos() {
@@ -266,10 +266,15 @@ function ModalProyecto({
   const [analisis, setAnalisis] = useState<AnalisisSlicerResultado[] | null>(null);
   const [analizando, setAnalizando] = useState(false);
   const [mostrarResumen, setMostrarResumen] = useState(false);
+  const [buscarAprobada, setBuscarAprobada] = useState('');
 
   // Solicitudes en estado "Aprobada": se pueden añadir/quitar de la cama. Las que ya
   // están en la cama aparecen marcadas (desmarcar = quitar).
   const aprobadas = (dSol?.solicitudes ?? []).filter((s) => s.estado === 'Aprobada');
+  const qAprobada = normalizarTexto(buscarAprobada);
+  const aprobadasFiltradas = qAprobada
+    ? aprobadas.filter((s) => normalizarTexto(`${s.nombre} ${s.descripcionPieza}`).includes(qAprobada))
+    : aprobadas;
   const impresoras = dImp?.impresoras ?? [];
   // No se puede asignar una cama a una impresora en mantenimiento. En edición se
   // conserva la que ya tuviera la cama (marcada) para no perder la asignación.
@@ -493,19 +498,29 @@ function ModalProyecto({
           {aprobadas.length === 0 ? (
             <Aviso tipo="info">No hay solicitudes en estado &quot;Aprobada&quot; disponibles.</Aviso>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-              {aprobadas.map((s) => {
-                const sel = !!items.find((i) => i.solicitudId === s.id);
-                return (
-                  <label key={s.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${sel ? 'bg-steam-50 ring-1 ring-steam-300' : 'hover:bg-slate-50'}`}>
-                    <input type="checkbox" checked={sel} onChange={() => alternarSolicitud(s)} className="accent-steam-600" />
-                    <span className="font-medium">{s.nombre}</span>
-                    <span className="truncate text-slate-500">{s.descripcionPieza}</span>
-                    <span className="ml-auto shrink-0 text-xs text-slate-400">{s.fechaTentativa}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <>
+              {aprobadas.length > 5 && (
+                <div className="mb-2">
+                  <BarraBusqueda valor={buscarAprobada} onCambio={setBuscarAprobada} placeholder="Buscar por solicitante o pieza…" />
+                </div>
+              )}
+              <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {aprobadasFiltradas.map((s) => {
+                  const sel = !!items.find((i) => i.solicitudId === s.id);
+                  return (
+                    <label key={s.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${sel ? 'bg-steam-50 ring-1 ring-steam-300' : 'hover:bg-slate-50'}`}>
+                      <input type="checkbox" checked={sel} onChange={() => alternarSolicitud(s)} className="accent-steam-600" />
+                      <span className="font-medium">{s.nombre}</span>
+                      <span className="truncate text-slate-500">{s.descripcionPieza}</span>
+                      <span className="ml-auto shrink-0 text-xs text-slate-400">{s.fechaTentativa}</span>
+                    </label>
+                  );
+                })}
+                {aprobadasFiltradas.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-slate-500">Sin solicitudes aprobadas que coincidan con la búsqueda.</p>
+                )}
+              </div>
+            </>
           )}
         </div>
 

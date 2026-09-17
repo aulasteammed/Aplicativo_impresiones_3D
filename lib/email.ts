@@ -63,9 +63,9 @@ export function construirHtmlEstado(d: DatosCorreoEstado): string {
     <tr><td align="center">
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
         <tr>
-          <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:26px;">Aula STEAM</h1>
-            <p style="margin:8px 0 0;color:#e0e7ff;font-size:15px;">Solicitudes de impresión y modelado 3D</p>
+          <td style="background:#1b1472;padding:32px 40px 26px;text-align:center;border-bottom:4px solid #f49600;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;letter-spacing:1px;text-transform:uppercase;">Aula STEAM Sonny Jiménez</h1>
+            <p style="margin:8px 0 0;color:#ffb43c;font-size:15px;font-weight:bold;">Solicitudes de impresión y modelado 3D</p>
           </td>
         </tr>
         <tr>

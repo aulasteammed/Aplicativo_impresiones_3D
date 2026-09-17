@@ -6,6 +6,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizarTexto } from '@/lib/util';
 import { IconoLapiz } from '@/components/Iconos';
 
+/** Agrupa campos de un modal de detalle bajo un título de sección (ej. "Solicitante", "Impresión"). */
+export function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="label-seccion">{titulo}</p>
+      {children}
+    </div>
+  );
+}
+
 export function Modal({
   abierto, onCerrar, titulo, children, ancho = 'max-w-2xl', centrado = false,
 }: {

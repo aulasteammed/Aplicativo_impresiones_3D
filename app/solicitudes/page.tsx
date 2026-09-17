@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { EstadoSolicitud, Solicitud } from '@/lib/types';
-import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, Paginacion, diffCampos, useDatos } from '@/components/ui';
+import { AccionesFila, Aviso, BarraBusqueda, BotonRecargar, Chip, Modal, ModalConfirmar, ModalConfirmarCambios, Paginacion, Seccion, diffCampos, useDatos } from '@/components/ui';
 import { IconoBasura, IconoSobre } from '@/components/Iconos';
 
 const ESTADOS: EstadoSolicitud[] = ['Nueva', 'En Revisión', 'Aprobada', 'Rechazada', 'Atendida'];
@@ -179,24 +179,36 @@ export default function PaginaSolicitudes() {
       {/* Detalle de la solicitud */}
       <Modal abierto={!!detalle} onCerrar={() => setDetalle(null)} titulo="Detalle de la solicitud" ancho="max-w-3xl">
         {detalle && (
-          <div className="space-y-3">
+          <div className="space-y-5">
             <div className="flex items-center justify-between">
               <Chip valor={detalle.estado} />
               <span className="text-xs text-slate-500">{detalle.marcaTemporal}</span>
             </div>
-            <CampoDetalle etiqueta="Nombres y apellidos / grupo" valor={detalle.nombre} />
-            <div className="grid grid-cols-2 gap-3">
-              <CampoDetalle etiqueta="Correo electrónico" valor={detalle.correo || '—'} />
-              <CampoDetalle etiqueta="Celular de contacto" valor={detalle.celular || '—'} />
-              <CampoDetalle etiqueta="Rol" valor={detalle.rol} />
-              <CampoDetalle etiqueta="Programa académico" valor={detalle.programa} />
-              <CampoDetalle etiqueta="Motivo" valor={detalle.motivo} />
-              <CampoDetalle etiqueta="Servicio solicitado" valor={detalle.servicio} />
-            </div>
-            <CampoDetalle etiqueta="Descripción de la pieza" valor={detalle.descripcionPieza} multilinea />
-            <CampoDetalle etiqueta="Objetivo de la pieza" valor={detalle.objetivoPieza} multilinea />
-            <CampoDetalle etiqueta="Archivos adjuntos" valor={detalle.archivos || '—'} />
-            <CampoDetalle etiqueta="Fecha tentativa de entrega" valor={detalle.fechaTentativa} />
+            <Seccion titulo="Solicitante">
+              <div className="space-y-3">
+                <CampoDetalle etiqueta="Nombres y apellidos / grupo" valor={detalle.nombre} />
+                <div className="grid grid-cols-2 gap-3">
+                  <CampoDetalle etiqueta="Correo electrónico" valor={detalle.correo || '—'} />
+                  <CampoDetalle etiqueta="Celular de contacto" valor={detalle.celular || '—'} />
+                  <CampoDetalle etiqueta="Rol" valor={detalle.rol} />
+                  <CampoDetalle etiqueta="Programa académico" valor={detalle.programa} />
+                </div>
+              </div>
+            </Seccion>
+            <Seccion titulo="Solicitud">
+              <div className="grid grid-cols-2 gap-3">
+                <CampoDetalle etiqueta="Motivo" valor={detalle.motivo} />
+                <CampoDetalle etiqueta="Servicio solicitado" valor={detalle.servicio} />
+                <CampoDetalle etiqueta="Fecha tentativa de entrega" valor={detalle.fechaTentativa} />
+              </div>
+            </Seccion>
+            <Seccion titulo="Pieza">
+              <div className="space-y-3">
+                <CampoDetalle etiqueta="Descripción de la pieza" valor={detalle.descripcionPieza} multilinea />
+                <CampoDetalle etiqueta="Objetivo de la pieza" valor={detalle.objetivoPieza} multilinea />
+                <CampoDetalle etiqueta="Archivos adjuntos" valor={detalle.archivos || '—'} />
+              </div>
+            </Seccion>
           </div>
         )}
       </Modal>

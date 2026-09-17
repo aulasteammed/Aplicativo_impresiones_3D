@@ -16,7 +16,16 @@
 
 import { createWorker, PSM } from 'tesseract.js';
 import Jimp from 'jimp';
+import os from 'os';
 import { AnalisisSlicerResultado } from './types';
+
+// Tesseract.js cachea el modelo de idioma (eng.traineddata, ~5 MB) escribiendo en
+// disco. Por defecto usa el directorio del proyecto (process.cwd()), que en Vercel
+// es de SOLO LECTURA: cada petición fallaría al cachear y re-descargaría el modelo
+// desde jsdelivr en cada llamada. os.tmpdir() sí es escribible en Vercel (y en
+// cualquier SO local), así que el caché persiste entre invocaciones del mismo
+// contenedor y evita la descarga repetida.
+const CACHE_PATH_OCR = os.tmpdir();
 
 // --- Protección contra "bombas de descompresión" ------------------------------------
 // Un archivo pequeño puede decodificar a una imagen enorme (cientos de millones de
@@ -348,7 +357,7 @@ function construirResultado(
 export async function analizarCapturas(
   archivos: { nombre: string; buffer: Buffer }[],
 ): Promise<AnalisisSlicerResultado[]> {
-  const worker = await createWorker('eng');
+  const worker = await createWorker('eng', undefined, { cachePath: CACHE_PATH_OCR });
   let workerDisperso: Awaited<ReturnType<typeof createWorker>> | null = null;
   try {
     const resultados: AnalisisSlicerResultado[] = [];
@@ -379,7 +388,7 @@ export async function analizarCapturas(
         // etiquetas sueltas dentro de cuadros de color (p. ej. "PETG").
         if (!material) {
           if (!workerDisperso) {
-            workerDisperso = await createWorker('eng');
+            workerDisperso = await createWorker('eng', undefined, { cachePath: CACHE_PATH_OCR });
             await workerDisperso.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
           }
           const textoDisperso = (await workerDisperso.recognize(imgFuerte)).data.text ?? '';

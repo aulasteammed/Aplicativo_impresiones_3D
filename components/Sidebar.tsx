@@ -85,11 +85,6 @@ export default function Sidebar() {
           </button>
         </div>
       )}
-      <div className="border-t border-slate-100 px-5 py-5 text-[11px] leading-relaxed text-slate-400">
-        Aula STEAM Sonny Jiménez M3-119
-        <br />
-        UNAL Medellín · {new Date().getFullYear()}
-      </div>
     </aside>
   );
 }

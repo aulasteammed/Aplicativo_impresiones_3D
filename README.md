@@ -290,7 +290,7 @@ npm start        # http://localhost:3000
    - ⚠️ **Importante**: define **`CLAVE_ACCESO`** con una contraseña. Como la URL de Vercel es **pública**, sin esta clave cualquiera podría leer o borrar los datos (ver [Clave de acceso](#clave-de-acceso-protección-de-la-app)).
 4. **Deploy**. La app queda en una URL pública, protegida por la clave.
 
-> Notas: el OCR corre en el runtime de Node (ya configurado con `serverComponentsExternalPackages` para `tesseract.js`, `jimp` y `googleapis` en `next.config.mjs`). La primera petición de OCR descarga el modelo (~5 MB), por lo que puede tardar un poco en un arranque en frío.
+> Notas: el OCR corre en el runtime de Node (ya configurado con `serverComponentsExternalPackages` para `tesseract.js`, `jimp` y `googleapis` en `next.config.mjs`). El caché del modelo de idioma apunta al directorio temporal del sistema (`os.tmpdir()`, ver `lib/ocr.ts`) en vez del directorio del proyecto, porque en Vercel este último es de solo lectura; así el modelo (~5 MB) se descarga en el arranque en frío y se reutiliza mientras el contenedor de la función siga activo, en vez de descargarse en cada petición. La ruta de OCR (`app/api/ia/analizar-slicer/route.ts`) declara `maxDuration = 60`, el máximo del plan gratuito (Hobby); en un plan de pago se puede subir si el análisis de varias capturas se acerca a ese límite.
 
 ---
 

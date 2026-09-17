@@ -283,6 +283,10 @@ const esPlaceholderCat = (v: string) => /^\(.*\)$/.test(v.trim()) || normalizarT
  *  como "Otros" (no se descarta); solo se descartan los valores que pertenecen a
  *  OTRA categoría (datos mal ubicados). */
 export function canonCategoria(dim: string, valor: string | null | undefined): string | null {
+  // El formulario deja "programa" vacío cuando el rol no tiene programa académico
+  // (Profesor(a), Contratista, Empleado(a), Público externo) — se cuenta como
+  // "No aplica" en vez de descartarse silenciosamente del gráfico y del filtro.
+  if ((valor == null || valor === '') && dim === 'programa') return 'No aplica';
   if (valor == null || valor === '') return null;
   const v = String(valor);
   if (esPlaceholderCat(v)) return v.trim();
